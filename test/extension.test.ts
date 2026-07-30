@@ -42,6 +42,8 @@ test("registers a composable tool and renders plain output outside the TUI", asy
 	assert.ok(registered);
 	assert.equal(registered.name, "render_mermaid");
 	assert.match(registered.promptGuidelines?.join("\n") ?? "", /raw Mermaid code fence/);
+	assert.match(registered.promptGuidelines?.join("\n") ?? "", /flowchart TB/);
+	assert.match(registered.promptGuidelines?.join("\n") ?? "", /flowchart LR/);
 
 	const result = await registered.execute(
 		"call-1",

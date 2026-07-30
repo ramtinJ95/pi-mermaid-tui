@@ -20,6 +20,23 @@ Reload or restart Pi after installation. The model can then call `render_mermaid
 
 This is a terminal-oriented subset of Mermaid rather than a complete Mermaid.js implementation. Unsupported diagram families and syntax use the upstream renderer's framed-source fallback. Diagrams that cannot fit the available width may also fall back to source.
 
+## Orientation
+
+Orientation stays part of the Mermaid source, so each diagram can choose the
+layout that best fits its content:
+
+- Flowcharts: `flowchart TB` (vertical), `flowchart LR` (horizontal), plus
+  `BT` and `RL` for the reverse directions.
+- State and class diagrams: add `direction TB` or `direction LR` after the
+  diagram header.
+- ER diagrams currently render vertically. Sequence diagrams keep their
+  natural horizontal participant layout.
+
+The tool guidance tells the model to honor explicit orientation requests. If
+no orientation is requested, it prefers vertical layouts for branching or
+potentially wide flows and horizontal layouts for short linear flows. There is
+no package configuration file or forced global orientation.
+
 ## How it works
 
 The extension registers `render_mermaid` through Pi's public extension API. A tool call validates the Mermaid source and lazily loads the bundled WebAssembly renderer. Its semantic output classes are mapped to the active Pi theme by a custom result component, which rerenders at the current terminal width.
