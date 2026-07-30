@@ -58,6 +58,7 @@
   },
   "scripts": {
     "test": "node --test test/*.test.ts",
+    "test:update-goldens": "UPDATE_GOLDENS=1 node --test test/terminal-golden.test.ts",
     "test:renderer": "cargo test --locked --manifest-path grok-mermaid/Cargo.toml",
     "typecheck": "tsc --noEmit",
     "test:package": "npm pack --dry-run",

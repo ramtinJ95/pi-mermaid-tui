@@ -60,6 +60,17 @@ npm install
 npm run check
 ```
 
+Terminal visual regressions are stored as plain Unicode fixtures under
+`test/fixtures/terminal-goldens/`. Normal test runs only compare them. To
+intentionally regenerate the fixtures after a renderer change, run:
+
+```sh
+npm run test:update-goldens
+```
+
+Review the resulting text diff before committing it; the command does not
+approve visual changes.
+
 The renderer build additionally requires the `wasm32-unknown-unknown` Rust target and `wasm-opt` from Binaryen:
 
 ```sh
