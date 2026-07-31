@@ -1113,16 +1113,19 @@ fn state_endpoint(graph: &mut Graph, id: &str, is_source: bool) -> Option<usize>
 }
 
 fn parse_state_desc(st: &str, graph: &mut Graph) -> Option<()> {
-    let (st, diff) = split_inline_classes(st);
-    let idx = if let Some((id, desc)) = st.split_once(':') {
-        let id = id.trim();
+    let (id, desc) = match split_state_label(st) {
+        Some((id, desc)) => (id, Some(desc)),
+        None => (st, None),
+    };
+    let (id, diff) = split_inline_classes(id.trim());
+    let idx = if let Some(desc) = desc {
         let desc = desc.trim();
         if id.is_empty() || id.contains(char::is_whitespace) || desc.is_empty() {
             return None;
         }
         graph.node_label(id, &decode_html_entities(desc))?
-    } else if !st.contains(char::is_whitespace) {
-        graph.node_index(st, None, Shape::Round)?
+    } else if !id.contains(char::is_whitespace) {
+        graph.node_index(id, None, Shape::Round)?
     } else {
         return None;
     };
@@ -3954,6 +3957,14 @@ mod tests {
         assert_eq!(g.nodes[marker].label, "●");
         assert_eq!(g.nodes[marker].diff, Some(DiffClass::Added));
         assert!(!g.index.contains_key("[*]"));
+    }
+
+    #[test]
+    fn labeled_state_parses_inline_class_before_description() {
+        let g = parse_state("stateDiagram-v2\n  Cancelled:::added : reason").unwrap();
+        let state = *g.index.get("Cancelled").unwrap();
+        assert_eq!(g.nodes[state].label, "reason");
+        assert_eq!(g.nodes[state].diff, Some(DiffClass::Added));
     }
 
     #[test]
