@@ -55,6 +55,42 @@ This is a narrow semantic profile, not general Mermaid CSS support. Other
 `classDef`, `style`, and `linkStyle` colors remain visually ignored. Use dotted
 edge syntax and textual labels when meaning must also survive uncolored output.
 
+## C4-style architecture views
+
+C4-style Context, Container, and Component views are supported as an authoring
+profile built from ordinary Mermaid flowcharts. Use subgraphs for system or
+container boundaries, and prefix labels so their architectural role survives
+in plain terminal output:
+
+| Prefix | Meaning |
+| --- | --- |
+| `Person:` | Human actor or role |
+| `System:` | Software system or system boundary |
+| `Container:` | Deployable application, service, or data store |
+| `Component:` | Major runtime component or module |
+| `External:` | Dependency outside the changed system |
+
+Label every relationship with its intent, protocol, or data shape. For code
+changes, show only the changed elements and their directly affected neighbors;
+5–15 nodes and at most two nested boundaries usually remain readable.
+
+```mermaid
+flowchart TB
+  Reviewer["Person: Reviewer"]
+  subgraph Product["System: Product"]
+    API["Container: API"]:::changed
+    Worker["Component: Worker"]:::added
+  end
+  Queue["External: Queue"]
+  Reviewer -->|"reviews behavior"| API
+  API -->|"publishes Job"| Queue
+  Queue -->|"delivers Job"| Worker
+```
+
+Native Mermaid `C4Context` and `C4Container` syntax is not supported. The
+profile also omits C4 sprites, icons, tags, and per-boundary layout directives;
+use one global flowchart direction and textual labels instead.
+
 ## How it works
 
 The extension registers `render_mermaid` through Pi's public extension API. A tool call validates the Mermaid source and lazily loads the bundled WebAssembly renderer. Its semantic output classes are mapped to the active Pi theme by a custom result component, which rerenders at the current terminal width.

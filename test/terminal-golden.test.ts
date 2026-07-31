@@ -80,6 +80,18 @@ const cases: GoldenCase[] = [
 		source:
 			"flowchart LR\n  Alpha[Alpha service] --> Beta[Beta service] --> Gamma[Gamma service]",
 	},
+	{
+		name: "c4-context-80",
+		width: 80,
+		source:
+			"flowchart TB\n  Reviewer[Person: Reviewer]\n  subgraph Product[System: Product]\n    Portal[Container: Review portal]:::changed\n  end\n  GitHub[External: GitHub]\n  Reviewer -->|reviews changes| Portal\n  Portal -->|reads pull requests| GitHub",
+	},
+	{
+		name: "c4-components-120",
+		width: 120,
+		source:
+			"flowchart TB\n  subgraph Product[System: Product]\n    subgraph API[Container: API]\n      Handler[Component: Handler]:::same\n      Service[Component: Service changed src/service.ts]:::changed\n    end\n    Worker[Container: Worker]:::added\n  end\n  Queue[External: Queue]\n  Handler -->|calls| Service\n  Service -->|publishes Job| Queue\n  Queue -->|delivers Job| Worker",
+	},
 ];
 
 const goldenDirectory = fileURLToPath(new URL("./fixtures/terminal-goldens/", import.meta.url));

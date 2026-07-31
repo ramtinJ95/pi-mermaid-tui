@@ -88,3 +88,16 @@ test("preserves code-change classes through the bundled WASM", async () => {
 	assert.match(stateHtml, /class="b added"/);
 	assert.match(stateHtml, /class="b removed"/);
 });
+
+test("renders a C4-style component view through flowchart conventions", async () => {
+	const renderer = await loadGrokRenderer();
+	const html = renderer.renderHtml(
+		"flowchart TB\n  Reviewer[Person: Reviewer]\n  subgraph Product[System: Product]\n    API[Container: API]:::changed\n    Worker[Component: Worker]:::added\n  end\n  Queue[External: Queue]\n  Reviewer -->|reviews behavior| API\n  API -->|publishes Job| Queue\n  Queue -->|delivers Job| Worker",
+		120,
+	);
+	const plain = grokHtmlToPlainLines(html).join("\n");
+	for (const label of ["Person: Reviewer", "System: Product", "Container: API", "Component: Worker", "External: Queue"]) {
+		assert.match(plain, new RegExp(label));
+	}
+	assert.doesNotMatch(plain, /mermaid: flowchart/i);
+});
