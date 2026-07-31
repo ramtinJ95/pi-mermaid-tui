@@ -527,10 +527,12 @@ fn apply_link_style_statement(st: &str, graph: &mut Graph) {
         .split_once(char::is_whitespace)
         .map(|(_, rest)| rest.trim())
         .unwrap_or("");
-    let Some(split) = rest.find(char::is_whitespace) else {
+    let Some(style_start) =
+        rest.find(|c: char| !(c.is_ascii_digit() || c == ',' || c.is_ascii_whitespace()))
+    else {
         return;
     };
-    let (indices, style) = rest.split_at(split);
+    let (indices, style) = rest.split_at(style_start);
     let diff = style.split(',').find_map(|part| {
         let (property, value) = part.trim().split_once(':')?;
         if !property.eq_ignore_ascii_case("stroke") {
@@ -548,7 +550,7 @@ fn apply_link_style_statement(st: &str, graph: &mut Graph) {
         return;
     };
     for index in indices
-        .split(',')
+        .split(|c: char| c == ',' || c.is_ascii_whitespace())
         .filter_map(|value| value.trim().parse::<usize>().ok())
     {
         if let Some(edge) = graph.edges.get_mut(index) {
@@ -3948,6 +3950,17 @@ mod tests {
         .unwrap();
         assert_eq!(g.edges[0].diff, Some(DiffClass::Removed));
         assert_eq!(g.edges[1].diff, Some(DiffClass::Added));
+    }
+
+    #[test]
+    fn link_style_accepts_spaces_between_edge_indices() {
+        let g =
+            parse_graph("flowchart TD\n  A --> B --> C\n  linkStyle 0, 1 stroke:#cf222e").unwrap();
+        assert!(
+            g.edges
+                .iter()
+                .all(|edge| edge.diff == Some(DiffClass::Removed))
+        );
     }
 
     #[test]
