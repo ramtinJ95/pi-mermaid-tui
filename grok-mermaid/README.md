@@ -25,6 +25,9 @@ architecture with these local modifications:
   `#8c959f` preserve the corresponding semantic class on rendered edges.
 - Canvas cells carry those classes through grouped layouts and reversed
   directions. The HTML wrapper emits them alongside the structural class.
+- Labeled fan-in edges retain every label: vertical layouts allocate separate
+  label rows, horizontal layouts place labels beside their source branches,
+  and vertical fan-out reserves enough width between sibling labels.
 
 This deliberately does not implement arbitrary Mermaid CSS. The semantic
 classes are a closed, terminal-theme-friendly profile. Upstream tests are
@@ -49,7 +52,7 @@ rustup target add wasm32-unknown-unknown
 
 This compiles the crate with `cargo build --release --target
 wasm32-unknown-unknown` and copies the result to `../grok-mermaid.wasm`
-(~163 KB), which `../grok-mermaid.html` fetches at load time.
+(~171 KB), which `../grok-mermaid.html` fetches at load time.
 
 Install [binaryen](https://github.com/WebAssembly/binaryen)'s `wasm-opt`
 before building: besides shrinking the module, it rewrites the overlong
