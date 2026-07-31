@@ -2141,6 +2141,7 @@ fn layout_canvas(
             ),
         }
     }
+    let shared_target_labels = shared_target_label_edges(graph, &ranks);
     for (i, edge) in graph.edges.iter().enumerate() {
         canvas.cur_diff = edge.diff;
         canvas.cur_style = match edge.line {
@@ -2157,9 +2158,11 @@ fn layout_canvas(
         let bus = plan.band_end[from.rank] + plan.edge_bus[i];
         let lane = plan.lane_base + plan.edge_lane[i];
         match (vertical, adjacent) {
-            (true, true) => route_forward(&mut canvas, from, to, edge, bus),
+            (true, true) => route_forward(&mut canvas, from, to, edge, bus, plan.edge_label_row[i]),
             (true, false) => route_back(&mut canvas, from, to, edge, lane),
-            (false, true) => route_forward_lr(&mut canvas, from, to, edge, bus),
+            (false, true) => {
+                route_forward_lr(&mut canvas, from, to, edge, bus, shared_target_labels[i])
+            }
             (false, false) => route_back_lr(&mut canvas, from, to, edge, lane),
         }
     }
@@ -2430,6 +2433,25 @@ fn lane_spans(
         .collect()
 }
 
+fn shared_target_label_edges(graph: &Graph, ranks: &[usize]) -> Vec<bool> {
+    let mut labeled_incoming = vec![0usize; graph.nodes.len()];
+    for edge in &graph.edges {
+        if edge.label.is_some() && edge.from != edge.to && ranks[edge.to] == ranks[edge.from] + 1 {
+            labeled_incoming[edge.to] += 1;
+        }
+    }
+    graph
+        .edges
+        .iter()
+        .map(|edge| {
+            edge.label.is_some()
+                && edge.from != edge.to
+                && ranks[edge.to] == ranks[edge.from] + 1
+                && labeled_incoming[edge.to] > 1
+        })
+        .collect()
+}
+
 fn place_td(
     ranks: &[usize],
     max_rank: usize,
@@ -2438,7 +2460,23 @@ fn place_td(
     graph: &Graph,
     placed: &mut [Placed],
 ) -> RoutePlan {
-    let centers = assign_positions(by_rank, &sizes.lay_w, GAP_X, &graph.edges, ranks);
+    let mut layout_w = sizes.lay_w.clone();
+    let mut labeled_outgoing = vec![0usize; graph.nodes.len()];
+    for edge in &graph.edges {
+        if edge.label.is_some() && edge.from != edge.to && ranks[edge.to] == ranks[edge.from] + 1 {
+            labeled_outgoing[edge.from] += 1;
+        }
+    }
+    for edge in &graph.edges {
+        if labeled_outgoing[edge.from] > 1
+            && ranks[edge.to] == ranks[edge.from] + 1
+            && let Some(label) = &edge.label
+        {
+            let label_footprint = 2 * (label.width().min(MAX_LABEL) + 1) + 1;
+            layout_w[edge.to] = layout_w[edge.to].max(label_footprint);
+        }
+    }
+    let centers = assign_positions(by_rank, &layout_w, GAP_X, &graph.edges, ranks);
 
     let mut edge_bus = vec![0usize; graph.edges.len()];
     let mut bus_tracks = vec![0usize; max_rank + 1];
@@ -2454,6 +2492,17 @@ fn place_td(
         *tracks = count;
     }
 
+    let shared_labels = shared_target_label_edges(graph, ranks);
+    let mut label_rows = vec![0usize; max_rank + 1];
+    let mut edge_label_slot = vec![None; graph.edges.len()];
+    for (i, edge) in graph.edges.iter().enumerate() {
+        if shared_labels[i] {
+            let band = ranks[edge.from];
+            edge_label_slot[i] = Some(label_rows[band]);
+            label_rows[band] += 1;
+        }
+    }
+
     let rank_h: Vec<usize> = by_rank
         .iter()
         .map(|row| {
@@ -2465,11 +2514,20 @@ fn place_td(
         .collect();
     let mut rank_y = vec![0usize; max_rank + 1];
     for r in 1..=max_rank {
-        let gap = GAP_Y.max(bus_tracks[r - 1] + 1);
+        let gap = GAP_Y.max(bus_tracks[r - 1] + label_rows[r - 1] + 1);
         rank_y[r] = rank_y[r - 1] + rank_h[r - 1] + gap;
     }
     let canvas_h = rank_y[max_rank] + rank_h[max_rank];
     let band_end: Vec<usize> = (0..=max_rank).map(|r| rank_y[r] + rank_h[r]).collect();
+    let edge_label_row: Vec<Option<usize>> = graph
+        .edges
+        .iter()
+        .enumerate()
+        .map(|(i, edge)| {
+            edge_label_slot[i]
+                .map(|slot| band_end[ranks[edge.from]] + bus_tracks[ranks[edge.from]] + slot)
+        })
+        .collect();
 
     let mut diagram_w = 1;
     for (r, row) in by_rank.iter().enumerate() {
@@ -2528,6 +2586,7 @@ fn place_td(
         edge_bus,
         lane_base,
         edge_lane,
+        edge_label_row,
     }
 }
 
@@ -2623,6 +2682,7 @@ fn place_lr(
         edge_bus,
         lane_base,
         edge_lane,
+        edge_label_row: vec![None; graph.edges.len()],
     }
 }
 
@@ -2632,6 +2692,7 @@ struct RoutePlan {
     edge_bus: Vec<usize>,
     lane_base: usize,
     edge_lane: Vec<usize>,
+    edge_label_row: Vec<Option<usize>>,
 }
 
 fn assign_tracks(spans: &[(usize, usize, usize, usize, usize)]) -> (Vec<(usize, usize)>, usize) {
@@ -2996,7 +3057,14 @@ fn draw_box(canvas: &mut Canvas, p: &Placed, lines: &[String], shape: Shape) {
     }
 }
 
-fn route_forward(canvas: &mut Canvas, from: &Placed, to: &Placed, edge: &Edge, bus: usize) {
+fn route_forward(
+    canvas: &mut Canvas,
+    from: &Placed,
+    to: &Placed,
+    edge: &Edge,
+    bus: usize,
+    label_row: Option<usize>,
+) {
     let tx = to.cx;
     let bx = if from.cx.abs_diff(tx) <= 1 {
         tx
@@ -3025,7 +3093,7 @@ fn route_forward(canvas: &mut Canvas, from: &Placed, to: &Placed, edge: &Edge, b
     }
 
     if let Some(label) = &edge.label {
-        place_label(canvas, label, head_row, tx + 1);
+        place_label(canvas, label, label_row.unwrap_or(head_row), tx + 1);
     }
 }
 
@@ -3101,7 +3169,14 @@ fn route_back(canvas: &mut Canvas, from: &Placed, to: &Placed, edge: &Edge, lane
     }
 }
 
-fn route_forward_lr(canvas: &mut Canvas, from: &Placed, to: &Placed, edge: &Edge, bus: usize) {
+fn route_forward_lr(
+    canvas: &mut Canvas,
+    from: &Placed,
+    to: &Placed,
+    edge: &Edge,
+    bus: usize,
+    label_near_source: bool,
+) {
     let rx = from.x + from.w - 1;
     let ry = from.cy;
     let ly = to.cy;
@@ -3126,7 +3201,12 @@ fn route_forward_lr(canvas: &mut Canvas, from: &Placed, to: &Placed, edge: &Edge
     }
 
     if let Some(label) = &edge.label {
-        place_label(canvas, label, ly.saturating_sub(1), bus + 1);
+        let row = if label_near_source {
+            ry.saturating_sub(1)
+        } else {
+            ly.saturating_sub(1)
+        };
+        place_label(canvas, label, row, bus + 1);
     }
 }
 
@@ -4293,6 +4373,68 @@ mod tests {
         let arrows = out.chars().filter(|&c| c == '▼').count();
         assert_eq!(arrows, 1, "merge edges share one arrowhead:\n{out}");
         assert!(!out.contains("▼▼"), "must not stack arrowheads:\n{out}");
+    }
+
+    #[test]
+    fn labeled_fan_in_preserves_each_label() {
+        let out = plain("graph TD\n Old -.->|old call| Shared\n New -->|new call| Shared");
+        for label in ["old call", "new call"] {
+            assert!(out.contains(label), "missing {label:?}:\n{out}");
+            assert_eq!(out.matches(label).count(), 1, "duplicate {label:?}:\n{out}");
+        }
+        let old_row = out
+            .lines()
+            .position(|line| line.contains("old call"))
+            .unwrap();
+        let new_row = out
+            .lines()
+            .position(|line| line.contains("new call"))
+            .unwrap();
+        assert_ne!(old_row, new_row, "fan-in labels need separate rows:\n{out}");
+        assert_eq!(out.chars().filter(|&c| c == '▼').count(), 1, "{out}");
+        assert!(out.contains('╌') && out.contains('─'), "{out}");
+    }
+
+    #[test]
+    fn labeled_fan_in_reserves_all_needed_rows() {
+        let out =
+            plain("graph TD\n A -->|alpha| Shared\n B -->|beta| Shared\n C -->|gamma| Shared");
+        let rows: Vec<usize> = ["alpha", "beta", "gamma"]
+            .iter()
+            .map(|label| {
+                out.lines()
+                    .position(|line| line.contains(label))
+                    .unwrap_or_else(|| panic!("missing {label:?}:\n{out}"))
+            })
+            .collect();
+        assert!(
+            rows[0] != rows[1] && rows[0] != rows[2] && rows[1] != rows[2],
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn labeled_lr_fan_in_preserves_each_label() {
+        let out = plain("graph LR\n Old -->|old call| Shared\n New -->|new call| Shared");
+        assert!(out.contains("old call"), "{out}");
+        assert!(out.contains("new call"), "{out}");
+    }
+
+    #[test]
+    fn labeled_fan_out_keeps_sibling_labels_separate() {
+        let out = plain("graph TD\n Start -->|old route| Old\n Start -->|new route| New");
+        let label_row = out
+            .lines()
+            .find(|line| line.contains("old route") && line.contains("new route"))
+            .expect("both fan-out labels share the arrowhead row");
+        let old_end = label_row.find("old route").unwrap() + "old route".len();
+        let new_start = label_row.find("new route").unwrap();
+        assert!(
+            label_row[old_end..new_start]
+                .chars()
+                .any(char::is_whitespace),
+            "sibling labels need visible separation:\n{out}"
+        );
     }
 
     #[test]
