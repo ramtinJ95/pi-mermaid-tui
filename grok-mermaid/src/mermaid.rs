@@ -1099,12 +1099,13 @@ fn split_state_label(value: &str) -> Option<(&str, &str)> {
 }
 
 fn state_endpoint(graph: &mut Graph, id: &str, is_source: bool) -> Option<usize> {
-    if id == "[*]" {
-        let key = if is_source { "[*]start" } else { "[*]end" };
-        return graph.node_index(key, Some("●"), Shape::Round);
-    }
     let (id, diff) = split_inline_classes(id);
-    let idx = graph.node_index(id, None, Shape::Round)?;
+    let idx = if id == "[*]" {
+        let key = if is_source { "[*]start" } else { "[*]end" };
+        graph.node_index(key, Some("●"), Shape::Round)?
+    } else {
+        graph.node_index(id, None, Shape::Round)?
+    };
     if let Some(diff) = diff {
         graph.nodes[idx].diff = Some(diff);
     }
@@ -3944,6 +3945,15 @@ mod tests {
         assert_eq!(diff("Idle"), Some(DiffClass::Same));
         assert_eq!(diff("Running"), Some(DiffClass::Added));
         assert_eq!(diff("Failed"), Some(DiffClass::Removed));
+    }
+
+    #[test]
+    fn state_marker_keeps_shape_when_annotated() {
+        let g = parse_state("stateDiagram-v2\n  [*]:::added --> Idle").unwrap();
+        let marker = *g.index.get("[*]start").unwrap();
+        assert_eq!(g.nodes[marker].label, "●");
+        assert_eq!(g.nodes[marker].diff, Some(DiffClass::Added));
+        assert!(!g.index.contains_key("[*]"));
     }
 
     #[test]
