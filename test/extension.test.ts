@@ -49,6 +49,8 @@ test("registers a composable tool and renders plain output outside the TUI", asy
 		registered.promptGuidelines?.join("\n") ?? "",
 		/Person:.*System:.*Container:.*Component:.*External:/,
 	);
+	assert.match(registered.promptGuidelines?.join("\n") ?? "", /one global flowchart direction/);
+	assert.match(registered.promptGuidelines?.join("\n") ?? "", /keep labels concise/);
 	assert.match(registered.promptGuidelines?.join("\n") ?? "", /Do not send native C4Context/);
 
 	const result = await registered.execute(
