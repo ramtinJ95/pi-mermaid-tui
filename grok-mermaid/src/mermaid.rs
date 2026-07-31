@@ -497,8 +497,8 @@ fn split_inline_classes(value: &str) -> (&str, Option<DiffClass>) {
         if name.is_empty() || !name.chars().all(is_class_char) {
             break;
         }
-        if let Some(parsed) = DiffClass::parse(name) {
-            diff = Some(parsed);
+        if diff.is_none() {
+            diff = DiffClass::parse(name);
         }
         rest = rest[..pos].trim_end();
     }
@@ -3919,6 +3919,14 @@ mod tests {
         let g = parse_graph("flowchart LR\n  A:::custom --> B").unwrap();
         assert_eq!(g.edges.len(), 1);
         assert_eq!(g.nodes[0].diff, None);
+    }
+
+    #[test]
+    fn multiple_inline_classes_use_the_rightmost_semantic_class() {
+        let flow = parse_graph("flowchart TD\n  A:::added:::removed").unwrap();
+        let state = parse_state("stateDiagram-v2\n  A:::added:::removed").unwrap();
+        assert_eq!(flow.nodes[0].diff, Some(DiffClass::Removed));
+        assert_eq!(state.nodes[0].diff, Some(DiffClass::Removed));
     }
 
     #[test]
