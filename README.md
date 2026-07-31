@@ -86,11 +86,12 @@ flowchart TB
   Queue -->|"delivers Job"| Worker
 ```
 
-Native Mermaid `C4Context` and `C4Container` syntax is not supported. The
-profile also omits C4 sprites, icons, tags, and per-boundary layout directives;
-use one global flowchart direction and textual labels instead. Do not use
-subgraphs as C4 boundaries: the terminal renderer currently routes
-cross-subgraph relationships to the boundary frame rather than the named node.
+Native Mermaid C4 syntax is not supported, including `C4Context`,
+`C4Container`, `C4Component`, `C4Dynamic`, and `C4Deployment`. The profile also
+omits C4 sprites, icons, tags, and per-boundary layout directives; use one
+global flowchart direction and textual labels instead. Do not use subgraphs as
+C4 boundaries: the terminal renderer currently routes cross-subgraph
+relationships to the boundary frame rather than the named node.
 
 ## How it works
 
