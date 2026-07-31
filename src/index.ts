@@ -22,7 +22,7 @@ export default function mermaidExtension(pi: ExtensionAPI) {
 			"Use render_mermaid instead of emitting a raw Mermaid code fence when a diagram would clarify the answer.",
 			"When the user requests a diagram orientation, encode it in the render_mermaid source: use flowchart TB for vertical or flowchart LR for horizontal flowcharts, and direction TB or direction LR inside state and class diagrams.",
 			"When the user does not request an orientation, prefer vertical flowcharts for branching or potentially wide diagrams and horizontal flowcharts for short linear flows.",
-			"For C4-style architecture views, use render_mermaid with ordinary flat flowchart syntax; encode architectural ownership in node labels rather than subgraphs, use the exact label prefixes Person:, System:, Container:, Component:, or External:, and label relationships by intent or data flow.",
+			"For C4-style architecture views, use render_mermaid with ordinary flat flowchart syntax; use one global flowchart direction, keep labels concise, encode architectural ownership in node labels rather than subgraphs, use the exact label prefixes Person:, System:, Container:, Component:, or External:, and label relationships by intent or data flow.",
 			"Do not send native C4Context or C4Container syntax to render_mermaid; show only the changed architectural elements and their directly affected neighbors, usually 5–15 nodes.",
 		],
 		parameters: Type.Object({
