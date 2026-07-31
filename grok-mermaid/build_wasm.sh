@@ -2,10 +2,10 @@
 # Rebuild ../grok-mermaid.wasm, the WebAssembly module behind
 # ../grok-mermaid.html.
 #
-# The renderer itself is src/mermaid.rs, copied unmodified (except for two
-# import lines — see the file header) from
+# The renderer itself is src/mermaid.rs, copied from
 # https://github.com/xai-org/grok-build
-# crates/codegen/xai-grok-markdown/src/mermaid.rs (Apache-2.0).
+# crates/codegen/xai-grok-markdown/src/mermaid.rs (Apache-2.0), with the local
+# modifications documented in README.md.
 #
 # Requires a Rust toolchain with the wasm32-unknown-unknown target:
 #   rustup target add wasm32-unknown-unknown
