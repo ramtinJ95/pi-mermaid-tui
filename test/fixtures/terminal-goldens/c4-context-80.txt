@@ -1,15 +1,14 @@
-     ┌──────────────────┐
-     │ Person: Reviewer │
-     └─────────┬────────┘
-               │
-               ▼reviews changes
-┌ System: Product ───────────┐
-│┌──────────────────────────┐│
-││ Container: Review portal ││
-│└──────────────────────────┘│
-└──────────────┬─────────────┘
-               │
-               ▼reads pull requests
-     ┌──────────────────┐
-     │ External: GitHub │
-     └──────────────────┘
+    ┌──────────────────┐
+    │ Person: Reviewer │
+    └─────────┬────────┘
+              │
+              ▼reviews changes
+┌──────────────────────────┐
+│ Container: Review portal │
+│    — System: Product     │
+└─────────────┬────────────┘
+              │
+              ▼reads pull requests
+    ┌──────────────────┐
+    │ External: GitHub │
+    └──────────────────┘

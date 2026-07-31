@@ -58,9 +58,10 @@ edge syntax and textual labels when meaning must also survive uncolored output.
 ## C4-style architecture views
 
 C4-style Context, Container, and Component views are supported as an authoring
-profile built from ordinary Mermaid flowcharts. Use subgraphs for system or
-container boundaries, and prefix labels so their architectural role survives
-in plain terminal output:
+profile built from ordinary, flat Mermaid flowcharts. Prefix labels so their
+architectural role survives in plain terminal output, and append ownership to
+internal labels when a boundary matters, for example
+`Component: Worker — Container: API — System: Product`:
 
 | Prefix | Meaning |
 | --- | --- |
@@ -77,11 +78,9 @@ changes, show only the changed elements and their directly affected neighbors;
 ```mermaid
 flowchart TB
   Reviewer["Person: Reviewer"]
-  subgraph Product["System: Product"]
-    API["Container: API"]:::changed
-    Worker["Component: Worker"]:::added
-  end
+  API["Container: API — System: Product"]:::changed
   Queue["External: Queue"]
+  Worker["Component: Worker — Container: API — System: Product"]:::added
   Reviewer -->|"reviews behavior"| API
   API -->|"publishes Job"| Queue
   Queue -->|"delivers Job"| Worker
@@ -89,7 +88,9 @@ flowchart TB
 
 Native Mermaid `C4Context` and `C4Container` syntax is not supported. The
 profile also omits C4 sprites, icons, tags, and per-boundary layout directives;
-use one global flowchart direction and textual labels instead.
+use one global flowchart direction and textual labels instead. Do not use
+subgraphs as C4 boundaries: the terminal renderer currently routes
+cross-subgraph relationships to the boundary frame rather than the named node.
 
 ## How it works
 

@@ -92,12 +92,16 @@ test("preserves code-change classes through the bundled WASM", async () => {
 test("renders a C4-style component view through flowchart conventions", async () => {
 	const renderer = await loadGrokRenderer();
 	const html = renderer.renderHtml(
-		"flowchart TB\n  Reviewer[Person: Reviewer]\n  subgraph Product[System: Product]\n    API[Container: API]:::changed\n    Worker[Component: Worker]:::added\n  end\n  Queue[External: Queue]\n  Reviewer -->|reviews behavior| API\n  API -->|publishes Job| Queue\n  Queue -->|delivers Job| Worker",
+		"flowchart TB\n  Reviewer[Person: Reviewer]\n  API[Container: API — System: Product]:::changed\n  Queue[External: Queue]\n  Worker[Component: Worker — Container: API — System: Product]:::added\n  Reviewer -->|reviews behavior| API\n  API -->|publishes Job| Queue\n  Queue -->|delivers Job| Worker",
 		120,
 	);
 	const plain = grokHtmlToPlainLines(html).join("\n");
-	for (const label of ["Person: Reviewer", "System: Product", "Container: API", "Component: Worker", "External: Queue"]) {
+	for (const label of ["Person: Reviewer", "System:", "Product", "Container: API", "Component: Worker", "External: Queue"]) {
 		assert.match(plain, new RegExp(label));
 	}
+	assert.match(
+		plain,
+		/Person: Reviewer[\s\S]*▼reviews behavior[\s\S]*Container: API[\s\S]*▼publishes Job[\s\S]*External: Queue[\s\S]*▼delivers Job[\s\S]*Component: Worker/,
+	);
 	assert.doesNotMatch(plain, /mermaid: flowchart/i);
 });
