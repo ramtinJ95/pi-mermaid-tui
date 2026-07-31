@@ -51,7 +51,10 @@ test("registers a composable tool and renders plain output outside the TUI", asy
 	);
 	assert.match(registered.promptGuidelines?.join("\n") ?? "", /one global flowchart direction/);
 	assert.match(registered.promptGuidelines?.join("\n") ?? "", /keep labels concise/);
-	assert.match(registered.promptGuidelines?.join("\n") ?? "", /Do not send native C4Context/);
+	assert.match(
+		registered.promptGuidelines?.join("\n") ?? "",
+		/Do not send native C4Context, C4Container, C4Component, C4Dynamic, C4Deployment, or any other native Mermaid C4 syntax/,
+	);
 
 	const result = await registered.execute(
 		"call-1",
