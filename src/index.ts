@@ -16,12 +16,14 @@ export default function mermaidExtension(pi: ExtensionAPI) {
 		name: "render_mermaid",
 		label: "Mermaid",
 		description:
-			"Render Mermaid source as a Unicode box-drawing diagram directly in the Pi TUI. Supports graph/flowchart, sequence, state, class, and ER diagrams. Flowcharts honor TB/TD, BT, LR, and RL directions; state and class diagrams honor direction statements.",
+			"Render Mermaid source as a Unicode box-drawing diagram directly in the Pi TUI. Supports graph/flowchart, sequence, state, class, and ER diagrams. Flowcharts honor TB/TD, BT, LR, and RL directions; state and class diagrams honor direction statements. C4-style views use flowcharts and subgraphs rather than native Mermaid C4 syntax.",
 		promptSnippet: "Render Mermaid diagrams inline as terminal-native Unicode art",
 		promptGuidelines: [
 			"Use render_mermaid instead of emitting a raw Mermaid code fence when a diagram would clarify the answer.",
 			"When the user requests a diagram orientation, encode it in the render_mermaid source: use flowchart TB for vertical or flowchart LR for horizontal flowcharts, and direction TB or direction LR inside state and class diagrams.",
 			"When the user does not request an orientation, prefer vertical flowcharts for branching or potentially wide diagrams and horizontal flowcharts for short linear flows.",
+			"For C4-style architecture views, use render_mermaid with ordinary flowchart and subgraph syntax; prefix labels with Person, System, Container, Component, or External, keep boundaries at most two levels deep, and label relationships by intent or data flow.",
+			"Do not send native C4Context or C4Container syntax to render_mermaid; show only the changed architectural elements and their directly affected neighbors, usually 5–15 nodes.",
 		],
 		parameters: Type.Object({
 			source: Type.String({

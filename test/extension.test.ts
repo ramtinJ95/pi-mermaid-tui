@@ -44,6 +44,8 @@ test("registers a composable tool and renders plain output outside the TUI", asy
 	assert.match(registered.promptGuidelines?.join("\n") ?? "", /raw Mermaid code fence/);
 	assert.match(registered.promptGuidelines?.join("\n") ?? "", /flowchart TB/);
 	assert.match(registered.promptGuidelines?.join("\n") ?? "", /flowchart LR/);
+	assert.match(registered.promptGuidelines?.join("\n") ?? "", /C4-style architecture/);
+	assert.match(registered.promptGuidelines?.join("\n") ?? "", /Do not send native C4Context/);
 
 	const result = await registered.execute(
 		"call-1",
