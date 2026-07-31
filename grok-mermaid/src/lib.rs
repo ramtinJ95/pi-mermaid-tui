@@ -8,8 +8,8 @@
 //! - `render_plain` / `render_html`: safe Rust entry points. The HTML flavor
 //!   wraps each styled run in `<span class="...">` using the class names
 //!   `b` (border), `n` (node text), `e` (edge), `el` (edge label),
-//!   `t` (title), plus `i` for italic, so a page can color the art the way
-//!   the original TUI does.
+//!   `t` (title), plus `i` for italic. Flowchart and state change annotations
+//!   add `added`, `removed`, `changed`, or `same` as a second class.
 //! - `wasm_alloc` / `wasm_render_html` / `wasm_result_ptr`: a tiny
 //!   wasm-bindgen-free FFI surface for the browser playground
 //!   (`../grok-mermaid.html`), built by `build_wasm.sh`.
@@ -51,13 +51,22 @@ pub fn render_html(src: &str, max_width: Option<usize>) -> Option<String> {
                 continue;
             }
             let text = escape_html(&span.content);
-            match span.style.class {
-                None => out.push_str(&text),
-                Some(class) => {
+            match (
+                span.style.class,
+                span.style.semantic_class,
+                span.style.is_italic(),
+            ) {
+                (None, None, false) => out.push_str(&text),
+                (class, semantic_class, italic) => {
                     out.push_str("<span class=\"");
-                    out.push_str(class);
-                    if span.style.is_italic() {
-                        out.push_str(" i");
+                    let mut separator = "";
+                    for name in [class, semantic_class, italic.then_some("i")]
+                        .into_iter()
+                        .flatten()
+                    {
+                        out.push_str(separator);
+                        out.push_str(name);
+                        separator = " ";
                     }
                     out.push_str("\">");
                     out.push_str(&text);
@@ -158,9 +167,61 @@ mod tests {
     #[test]
     fn renders_classed_html() {
         let out = render_html("graph LR\n  A[a & b] -->|go| C{c}", Some(120)).unwrap();
-        assert!(out.contains("<span class=\"b\">"), "missing border span:\n{out}");
-        assert!(out.contains("<span class=\"el\">"), "missing edge label span:\n{out}");
+        assert!(
+            out.contains("<span class=\"b\">"),
+            "missing border span:\n{out}"
+        );
+        assert!(
+            out.contains("<span class=\"el\">"),
+            "missing edge label span:\n{out}"
+        );
         assert!(out.contains("a &amp; b"), "unescaped ampersand:\n{out}");
+    }
+
+    #[test]
+    fn renders_diff_classes_without_changing_plain_output() {
+        let plain = "flowchart TD\n  A[Same] --> B[Added]\n  B -.-> C[Removed]";
+        let annotated = "flowchart TD\n  A[Same]:::same --> B[Added]:::added\n  B -.-> C[Removed]:::removed\n  linkStyle 1 stroke:#cf222e,stroke-dasharray:5";
+        assert_eq!(
+            render_plain(plain, Some(120)),
+            render_plain(annotated, Some(120))
+        );
+
+        let out = render_html(annotated, Some(120)).unwrap();
+        assert!(
+            out.contains("class=\"b same\""),
+            "missing same node style:\n{out}"
+        );
+        assert!(
+            out.contains("class=\"b added\""),
+            "missing added node style:\n{out}"
+        );
+        assert!(
+            out.contains("class=\"b removed\""),
+            "missing removed node style:\n{out}"
+        );
+        assert!(
+            out.contains("class=\"e removed\""),
+            "missing removed edge style:\n{out}"
+        );
+    }
+
+    #[test]
+    fn grouped_and_reversed_diagrams_keep_diff_classes() {
+        for source in [
+            "flowchart BT\n  subgraph Group\n    A:::added --> B:::removed\n  end",
+            "flowchart RL\n  A:::changed --> B:::same",
+        ] {
+            let out = render_html(source, Some(120)).unwrap();
+            assert!(
+                out.contains(" added\"") || out.contains(" changed\""),
+                "missing source-node diff style:\n{out}"
+            );
+            assert!(
+                out.contains(" removed\"") || out.contains(" same\""),
+                "missing target-node diff style:\n{out}"
+            );
+        }
     }
 
     #[test]

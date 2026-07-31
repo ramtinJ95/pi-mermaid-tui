@@ -68,3 +68,23 @@ test("uses the upstream framed-source fallback for unsupported diagram families"
 	assert.match(plain, /mermaid: pie/i);
 	assert.match(plain, /Dogs/);
 });
+
+test("preserves code-change classes through the bundled WASM", async () => {
+	const renderer = await loadGrokRenderer();
+	const html = renderer.renderHtml(
+		"flowchart TD\n  A[Same]:::same --> B[Added]:::added\n  B -.-> C[Removed]:::removed\n  D[Changed]\n  class D changed\n  linkStyle 1 stroke:#cf222e,stroke-dasharray:5",
+		120,
+	);
+	for (const semanticClass of ["same", "added", "removed", "changed"]) {
+		assert.match(html, new RegExp(`class=\"[bn] ${semanticClass}\"`));
+	}
+	assert.match(html, /class="e removed"/);
+
+	const stateHtml = renderer.renderHtml(
+		"stateDiagram-v2\n  Idle:::same --> Running:::added\n  Failed\n  class Failed removed",
+		120,
+	);
+	assert.match(stateHtml, /class="b same"/);
+	assert.match(stateHtml, /class="b added"/);
+	assert.match(stateHtml, /class="b removed"/);
+});

@@ -14,13 +14,21 @@ CLI uses to draw ```` ```mermaid ```` blocks in the terminal. It supports
 `stateDiagram`, `classDiagram` and `erDiagram`; anything else falls back to
 the raw source in a framed box.
 
-That file is **used unmodified except for two import lines**: upstream it
-imports `Style`/`Modifier`/`Span`/`Line` from [ratatui](https://ratatui.rs/),
-and here those imports point at `src/shim.rs`, a ~70-line stand-in for just
-those four types. Instead of terminal colors, the shim's `Style` carries a
-CSS class name, which is how the playground colors the output. Everything
-else — parsing, layout, edge routing, the box-drawing canvas — runs
-exactly as upstream wrote it, including its 148 unit tests (`cargo test`).
+The renderer retains the upstream parser, layout, routing, and box-drawing
+architecture with these local modifications:
+
+- The two `ratatui` imports point at `src/shim.rs`, a small stand-in for the
+  required style and text types.
+- Flowchart and state nodes preserve the semantic classes `added`, `removed`,
+  `changed`, and `same` from inline `:::` and `class` assignments.
+- Flowchart `linkStyle` strokes using `#2ea043`, `#cf222e`, `#bf8700`, or
+  `#8c959f` preserve the corresponding semantic class on rendered edges.
+- Canvas cells carry those classes through grouped layouts and reversed
+  directions. The HTML wrapper emits them alongside the structural class.
+
+This deliberately does not implement arbitrary Mermaid CSS. The semantic
+classes are a closed, terminal-theme-friendly profile. Upstream tests are
+retained and local coverage is added alongside them (`cargo test`).
 
 `src/lib.rs` adds safe `render_plain`/`render_html` entry points and a tiny
 wasm-bindgen-free FFI (`wasm_alloc` / `wasm_render_html` / `wasm_result_ptr`)
@@ -62,4 +70,4 @@ cargo. JavaScript talks to it like this:
 3. Read that many bytes at `wasm_result_ptr()` and UTF-8 decode. The HTML
    is the box art with each styled run wrapped in `<span class="...">`:
    `b` border, `n` node text, `e` edge, `el` edge label, `t` title, plus
-   `i` for italic.
+   `i` italic and optional `added`, `removed`, `changed`, or `same` semantics.

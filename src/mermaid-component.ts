@@ -24,7 +24,11 @@ interface MermaidComponentOptions {
 function styleSpan(span: GrokSpan, theme: Theme): string {
 	let text = span.text;
 	const classes = new Set(span.classes);
-	if (classes.has("t")) text = theme.fg("toolTitle", theme.bold(text));
+	if (classes.has("added")) text = theme.fg("toolDiffAdded", text);
+	else if (classes.has("removed")) text = theme.fg("toolDiffRemoved", text);
+	else if (classes.has("changed")) text = theme.fg("warning", text);
+	else if (classes.has("same")) text = theme.fg("toolDiffContext", text);
+	else if (classes.has("t")) text = theme.fg("toolTitle", theme.bold(text));
 	else if (classes.has("el")) text = theme.fg("accent", text);
 	else if (classes.has("n")) text = theme.fg("text", text);
 	else if (classes.has("b")) text = theme.fg("borderAccent", text);

@@ -15,6 +15,7 @@ impl Modifier {
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub struct Style {
     pub class: Option<&'static str>,
+    pub semantic_class: Option<&'static str>,
     modifiers: u8,
 }
 
@@ -23,8 +24,14 @@ impl Style {
     pub const fn class(name: &'static str) -> Self {
         Style {
             class: Some(name),
+            semantic_class: None,
             modifiers: 0,
         }
+    }
+
+    pub const fn with_semantic_class(mut self, semantic_class: Option<&'static str>) -> Self {
+        self.semantic_class = semantic_class;
+        self
     }
 
     pub fn add_modifier(mut self, modifier: Modifier) -> Self {

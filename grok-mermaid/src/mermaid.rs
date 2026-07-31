@@ -7,14 +7,15 @@
 //! Copied from <https://github.com/xai-org/grok-build>
 //! (`crates/codegen/xai-grok-markdown/src/mermaid.rs`), Apache-2.0 licensed,
 //! Copyright 2023-2026 SpaceXAI. See the LICENSE file in this directory.
-//! The only modification: the two `use ratatui::...` imports below now point
-//! at `crate::shim`, a minimal local stand-in for the handful of `ratatui`
-//! style/text types this module uses, so it compiles without ratatui.
+//! Local modifications point the two `ratatui` imports at `crate::shim` and
+//! preserve the semantic code-change classes `added`, `removed`, `changed`,
+//! and `same` through flowchart/state parsing and rendering. See README.md in
+//! this directory for the exact supported subset.
 
 use std::collections::HashMap;
 
-use crate::shim::{Modifier, Style};
 use crate::shim::{Line, Span};
+use crate::shim::{Modifier, Style};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 /// Theme-derived styles used when painting a diagram.
@@ -109,6 +110,7 @@ enum Shape {
 struct Node {
     label: String,
     shape: Shape,
+    diff: Option<DiffClass>,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -136,6 +138,53 @@ struct Edge {
     head_to: Head,
     head_from: Head,
     line: LineKind,
+    diff: Option<DiffClass>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum DiffClass {
+    Added,
+    Removed,
+    Changed,
+    Same,
+}
+
+impl DiffClass {
+    fn parse(name: &str) -> Option<Self> {
+        match name.to_ascii_lowercase().as_str() {
+            "added" => Some(Self::Added),
+            "removed" => Some(Self::Removed),
+            "changed" => Some(Self::Changed),
+            "same" => Some(Self::Same),
+            _ => None,
+        }
+    }
+
+    fn class(self) -> &'static str {
+        match self {
+            Self::Added => "added",
+            Self::Removed => "removed",
+            Self::Changed => "changed",
+            Self::Same => "same",
+        }
+    }
+
+    fn precedence(self) -> u8 {
+        match self {
+            Self::Removed => 4,
+            Self::Changed => 3,
+            Self::Added => 2,
+            Self::Same => 1,
+        }
+    }
+}
+
+fn merge_diff(current: Option<DiffClass>, incoming: Option<DiffClass>) -> Option<DiffClass> {
+    match (current, incoming) {
+        (Some(a), Some(b)) if a.precedence() >= b.precedence() => Some(a),
+        (_, Some(b)) => Some(b),
+        (a, None) => a,
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -178,7 +227,11 @@ impl Graph {
         }
         let label = label.unwrap_or(id).to_string();
         self.index.insert(id.to_string(), self.nodes.len());
-        self.nodes.push(Node { label, shape });
+        self.nodes.push(Node {
+            label,
+            shape,
+            diff: None,
+        });
         self.node_group.push(self.cur_group);
         Some(self.nodes.len() - 1)
     }
@@ -228,6 +281,8 @@ fn parse_graph(src: &str) -> Option<Graph> {
     };
 
     let mut stack: Vec<usize> = Vec::new();
+    let mut class_statements: Vec<String> = Vec::new();
+    let mut link_style_statements: Vec<String> = Vec::new();
     for st in &statements[1..] {
         let first_word = st.split_whitespace().next().unwrap_or("");
         match first_word.to_ascii_lowercase().as_str() {
@@ -250,7 +305,15 @@ fn parse_graph(src: &str) -> Option<Graph> {
                 graph.cur_group = stack.last().copied();
                 continue;
             }
-            "classdef" | "class" | "style" | "linkstyle" | "click" | "direction" => continue,
+            "class" => {
+                class_statements.push(st.clone());
+                continue;
+            }
+            "linkstyle" => {
+                link_style_statements.push(st.clone());
+                continue;
+            }
+            "classdef" | "style" | "click" | "direction" => continue,
             _ => {}
         }
         parse_statement(st, &mut graph);
@@ -261,6 +324,12 @@ fn parse_graph(src: &str) -> Option<Graph> {
 
     if graph.nodes.is_empty() {
         return None;
+    }
+    for st in &class_statements {
+        apply_class_statement(st, &mut graph);
+    }
+    for st in &link_style_statements {
+        apply_link_style_statement(st, &mut graph);
     }
     Some(graph)
 }
@@ -356,6 +425,7 @@ fn parse_statement(st: &str, graph: &mut Graph) {
                     head_to,
                     head_from,
                     line,
+                    diff: None,
                 });
             }
         }
@@ -391,6 +461,99 @@ fn skip_spaces(chars: &[char], mut i: usize) -> usize {
 
 fn is_id_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
+}
+
+fn is_class_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_' || c == '-'
+}
+
+fn parse_inline_classes(chars: &[char], mut i: usize) -> (Option<DiffClass>, usize) {
+    let mut diff = None;
+    while chars.get(i..i + 3) == Some(&[':', ':', ':']) {
+        i += 3;
+        let start = i;
+        while i < chars.len() && is_class_char(chars[i]) {
+            i += 1;
+        }
+        if i == start {
+            break;
+        }
+        let name: String = chars[start..i].iter().collect();
+        if let Some(parsed) = DiffClass::parse(&name) {
+            diff = Some(parsed);
+        }
+    }
+    (diff, i)
+}
+
+fn split_inline_classes(value: &str) -> (&str, Option<DiffClass>) {
+    let mut rest = value.trim();
+    let mut diff = None;
+    while let Some(pos) = rest.rfind(":::") {
+        let name = &rest[pos + 3..];
+        if name.is_empty() || !name.chars().all(is_class_char) {
+            break;
+        }
+        if let Some(parsed) = DiffClass::parse(name) {
+            diff = Some(parsed);
+        }
+        rest = rest[..pos].trim_end();
+    }
+    (rest, diff)
+}
+
+fn apply_class_statement(st: &str, graph: &mut Graph) {
+    let rest = st
+        .split_once(char::is_whitespace)
+        .map(|(_, rest)| rest.trim())
+        .unwrap_or("");
+    let Some((ids, classes)) = rest.rsplit_once(char::is_whitespace) else {
+        return;
+    };
+    let diff = classes.split(',').filter_map(DiffClass::parse).next_back();
+    let Some(diff) = diff else {
+        return;
+    };
+    for id in ids.split(',').map(str::trim).filter(|id| !id.is_empty()) {
+        if let Some(&idx) = graph.index.get(id) {
+            graph.nodes[idx].diff = Some(diff);
+        }
+    }
+}
+
+fn apply_link_style_statement(st: &str, graph: &mut Graph) {
+    let rest = st
+        .split_once(char::is_whitespace)
+        .map(|(_, rest)| rest.trim())
+        .unwrap_or("");
+    let Some(split) = rest.find(char::is_whitespace) else {
+        return;
+    };
+    let (indices, style) = rest.split_at(split);
+    let diff = style.split(',').find_map(|part| {
+        let (property, value) = part.trim().split_once(':')?;
+        if !property.eq_ignore_ascii_case("stroke") {
+            return None;
+        }
+        match value.trim().to_ascii_lowercase().as_str() {
+            "#2ea043" => Some(DiffClass::Added),
+            "#cf222e" => Some(DiffClass::Removed),
+            "#bf8700" => Some(DiffClass::Changed),
+            "#8c959f" => Some(DiffClass::Same),
+            _ => None,
+        }
+    });
+    let Some(diff) = diff else {
+        return;
+    };
+    for index in indices
+        .split(',')
+        .filter_map(|value| value.trim().parse::<usize>().ok())
+    {
+        if let Some(edge) = graph.edges.get_mut(index) {
+            edge.diff = Some(diff);
+        }
+    }
 }
 
 fn parse_node(chars: &[char], start: usize, graph: &mut Graph) -> Option<(usize, usize)> {
@@ -436,7 +599,11 @@ fn parse_node(chars: &[char], start: usize, graph: &mut Graph) -> Option<(usize,
 
     let shape = shape.unwrap_or(Shape::Rect);
     let label = label.as_deref();
+    let (diff, after) = parse_inline_classes(chars, after);
     let idx = graph.node_index(&id, label, shape)?;
+    if let Some(diff) = diff {
+        graph.nodes[idx].diff = Some(diff);
+    }
     Some((idx, after))
 }
 
@@ -768,6 +935,7 @@ fn parse_state(src: &str) -> Option<Graph> {
     };
 
     let mut in_note = false;
+    let mut class_statements: Vec<String> = Vec::new();
     for st in &statements[1..] {
         if in_note {
             if st.eq_ignore_ascii_case("end note") {
@@ -797,7 +965,8 @@ fn parse_state(src: &str) -> Option<Graph> {
                 }
             }
             "state" => parse_state_decl(st, &mut graph)?,
-            "classdef" | "class" | "hide" | "scale" | "}" | "--" => {}
+            "class" => class_statements.push(st.clone()),
+            "classdef" | "hide" | "scale" | "}" | "--" => {}
             _ => {
                 if st.contains("-->") {
                     parse_transition(st, &mut graph)?;
@@ -814,11 +983,15 @@ fn parse_state(src: &str) -> Option<Graph> {
     if graph.nodes.is_empty() {
         return None;
     }
+    for st in &class_statements {
+        apply_class_statement(st, &mut graph);
+    }
     Some(graph)
 }
 
 fn parse_state_decl(st: &str, graph: &mut Graph) -> Option<()> {
     let rest = st["state".len()..].trim().trim_end_matches('{').trim();
+    let (rest, diff) = split_inline_classes(rest);
     if rest.is_empty() {
         return Some(());
     }
@@ -829,7 +1002,10 @@ fn parse_state_decl(st: &str, graph: &mut Graph) -> Option<()> {
             .strip_prefix("as")
             .map(str::trim)
             .unwrap_or(label);
-        graph.node_label(id, &decode_html_entities(label))?;
+        let idx = graph.node_label(id, &decode_html_entities(label))?;
+        if let Some(diff) = diff {
+            graph.nodes[idx].diff = Some(diff);
+        }
         return Some(());
     }
     let mut shape = Shape::Round;
@@ -847,7 +1023,10 @@ fn parse_state_decl(st: &str, graph: &mut Graph) -> Option<()> {
         return None;
     }
     let label = if stereotyped { Some(id) } else { None };
-    graph.node_index(id, label, shape)?;
+    let idx = graph.node_index(id, label, shape)?;
+    if let Some(diff) = diff {
+        graph.nodes[idx].diff = Some(diff);
+    }
     Some(())
 }
 
@@ -874,7 +1053,7 @@ fn parse_transition(st: &str, graph: &mut Graph) -> Option<()> {
             Some((t, _)) => (t, &rhs[t.len()..]),
             None => (rhs, ""),
         };
-        let (to_part, label) = match to_part.split_once(':') {
+        let (to_part, label) = match split_state_label(to_part) {
             Some((t, l)) => (t, non_empty(decode_html_entities(l.trim()))),
             None => (to_part, None),
         };
@@ -899,6 +1078,7 @@ fn parse_transition(st: &str, graph: &mut Graph) -> Option<()> {
             head_to: Head::Arrow,
             head_from: Head::None,
             line: LineKind::Solid,
+            diff: None,
         });
         prev = Some(to);
         rest = tail;
@@ -906,26 +1086,47 @@ fn parse_transition(st: &str, graph: &mut Graph) -> Option<()> {
     Some(())
 }
 
+fn split_state_label(value: &str) -> Option<(&str, &str)> {
+    for (index, c) in value.char_indices() {
+        if c == ':'
+            && !value[..index].ends_with(':')
+            && !value[index + c.len_utf8()..].starts_with(':')
+        {
+            return Some((&value[..index], &value[index + c.len_utf8()..]));
+        }
+    }
+    None
+}
+
 fn state_endpoint(graph: &mut Graph, id: &str, is_source: bool) -> Option<usize> {
     if id == "[*]" {
         let key = if is_source { "[*]start" } else { "[*]end" };
         return graph.node_index(key, Some("●"), Shape::Round);
     }
-    graph.node_index(id, None, Shape::Round)
+    let (id, diff) = split_inline_classes(id);
+    let idx = graph.node_index(id, None, Shape::Round)?;
+    if let Some(diff) = diff {
+        graph.nodes[idx].diff = Some(diff);
+    }
+    Some(idx)
 }
 
 fn parse_state_desc(st: &str, graph: &mut Graph) -> Option<()> {
-    if let Some((id, desc)) = st.split_once(':') {
+    let (st, diff) = split_inline_classes(st);
+    let idx = if let Some((id, desc)) = st.split_once(':') {
         let id = id.trim();
         let desc = desc.trim();
         if id.is_empty() || id.contains(char::is_whitespace) || desc.is_empty() {
             return None;
         }
-        graph.node_label(id, &decode_html_entities(desc))?;
+        graph.node_label(id, &decode_html_entities(desc))?
     } else if !st.contains(char::is_whitespace) {
-        graph.node_index(st, None, Shape::Round)?;
+        graph.node_index(st, None, Shape::Round)?
     } else {
         return None;
+    };
+    if let Some(diff) = diff {
+        graph.nodes[idx].diff = Some(diff);
     }
     Some(())
 }
@@ -1055,6 +1256,7 @@ fn parse_class(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
                 head_to,
                 head_from,
                 line,
+                diff: None,
             });
             continue;
         }
@@ -1267,6 +1469,7 @@ fn parse_er(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
                 head_to: Head::None,
                 head_from: Head::None,
                 line,
+                diff: None,
             });
             continue;
         }
@@ -1410,10 +1613,12 @@ struct Canvas {
     h: usize,
     ch: Vec<char>,
     cls: Vec<Cls>,
+    diff: Vec<Option<DiffClass>>,
     mask: Vec<u8>,
     style: Vec<u8>,
     occupied: Vec<bool>,
     cur_style: u8,
+    cur_diff: Option<DiffClass>,
 }
 
 impl Canvas {
@@ -1424,10 +1629,12 @@ impl Canvas {
             h,
             ch: vec![' '; n],
             cls: vec![Cls::Empty; n],
+            diff: vec![None; n],
             mask: vec![0; n],
             style: vec![0; n],
             occupied: vec![false; n],
             cur_style: STY_SOLID,
+            cur_diff: None,
         }
     }
 
@@ -1442,6 +1649,7 @@ impl Canvas {
         let i = self.idx(x, y);
         self.ch[i] = c;
         self.cls[i] = cls;
+        self.diff[i] = merge_diff(self.diff[i], self.cur_diff);
     }
 
     fn add_bits(&mut self, x: usize, y: usize, bits: u8) {
@@ -1454,6 +1662,7 @@ impl Canvas {
         }
         self.mask[i] |= bits;
         self.style[i] |= self.cur_style;
+        self.diff[i] = merge_diff(self.diff[i], self.cur_diff);
         if self.cls[i] != Cls::Border {
             self.cls[i] = Cls::Edge;
         }
@@ -1470,6 +1679,7 @@ impl Canvas {
                 let di = self.idx(x, y);
                 self.ch[di] = sub.ch[si];
                 self.cls[di] = sub.cls[si];
+                self.diff[di] = sub.diff[si];
                 self.style[di] = sub.style[si];
                 self.occupied[di] = true;
             }
@@ -1482,6 +1692,9 @@ impl Canvas {
         }
         let i = self.idx(x, y);
         self.mask[i] |= bits;
+        if !self.occupied[i] {
+            self.diff[i] = merge_diff(self.diff[i], self.cur_diff);
+        }
         if self.cls[i] != Cls::Border {
             self.cls[i] = Cls::Edge;
         }
@@ -1537,6 +1750,7 @@ impl Canvas {
                 let (i, j) = (self.idx(x, y), self.idx(x, y2));
                 self.ch.swap(i, j);
                 self.cls.swap(i, j);
+                self.diff.swap(i, j);
             }
         }
         for c in self.ch.iter_mut() {
@@ -1553,6 +1767,7 @@ impl Canvas {
                 let (i, j) = (self.idx(x, y), self.idx(x2, y));
                 self.ch.swap(i, j);
                 self.cls.swap(i, j);
+                self.diff.swap(i, j);
             }
         }
         for c in self.ch.iter_mut() {
@@ -1569,6 +1784,7 @@ impl Canvas {
                     }
                     let end = self.idx(x, y);
                     self.ch[start..end].reverse();
+                    self.diff[start..end].reverse();
                 } else {
                     x += 1;
                 }
@@ -1592,6 +1808,7 @@ impl Canvas {
             let mut plain_row = String::new();
             let mut run = String::new();
             let mut run_cls = Cls::Empty;
+            let mut run_diff = None;
             for x in 0..last {
                 let i = self.idx(x, y);
                 let c = self.ch[i];
@@ -1599,18 +1816,20 @@ impl Canvas {
                     continue;
                 }
                 let cls = self.cls[i];
+                let diff = self.diff[i];
                 plain_row.push(c);
-                if cls != run_cls && !run.is_empty() {
+                if (cls != run_cls || diff != run_diff) && !run.is_empty() {
                     spans.push(Span::styled(
                         std::mem::take(&mut run),
-                        style_for(run_cls, styles),
+                        style_for(run_cls, run_diff, styles),
                     ));
                 }
                 run_cls = cls;
+                run_diff = diff;
                 run.push(c);
             }
             if !run.is_empty() {
-                spans.push(Span::styled(run, style_for(run_cls, styles)));
+                spans.push(Span::styled(run, style_for(run_cls, run_diff, styles)));
             }
             styled.push(Line::from(spans));
             plain.push(plain_row.trim_end().to_string());
@@ -1619,14 +1838,15 @@ impl Canvas {
     }
 }
 
-fn style_for(cls: Cls, styles: &MermaidStyles) -> Style {
-    match cls {
+fn style_for(cls: Cls, diff: Option<DiffClass>, styles: &MermaidStyles) -> Style {
+    let style = match cls {
         Cls::Empty => Style::default(),
         Cls::Border => styles.border,
         Cls::Text => styles.node_text,
         Cls::Edge => styles.edge,
         Cls::EdgeLabel => styles.edge_label,
-    }
+    };
+    style.with_semantic_class(diff.map(DiffClass::class))
 }
 
 fn mask_char(mask: u8) -> char {
@@ -1899,6 +2119,7 @@ fn layout_canvas(
 
     let mut canvas = Canvas::new(canvas_w, canvas_h);
     for idx in 0..n {
+        canvas.cur_diff = graph.nodes[idx].diff;
         match &extras[idx] {
             NodeExtra::Frame(sub) => {
                 draw_frame(&mut canvas, &placed[idx], &graph.nodes[idx].label, sub)
@@ -1915,6 +2136,7 @@ fn layout_canvas(
         }
     }
     for (i, edge) in graph.edges.iter().enumerate() {
+        canvas.cur_diff = edge.diff;
         canvas.cur_style = match edge.line {
             LineKind::Solid => STY_SOLID,
             LineKind::Dotted => STY_DOT,
@@ -2063,6 +2285,7 @@ fn build_scope(
                 nodes.push(Node {
                     label: graph.nodes[*ni].label.clone(),
                     shape: graph.nodes[*ni].shape,
+                    diff: graph.nodes[*ni].diff,
                 });
                 extras.push(NodeExtra::Plain);
             }
@@ -2071,6 +2294,7 @@ fn build_scope(
                 nodes.push(Node {
                     label: graph.groups[*gi].label.clone(),
                     shape: Shape::Rect,
+                    diff: None,
                 });
                 extras.push(NodeExtra::Frame(sub));
             }
@@ -2091,6 +2315,7 @@ fn build_scope(
                 head_to: e.head_to,
                 head_from: e.head_from,
                 line: e.line,
+                diff: e.diff,
             });
         }
     }
@@ -3668,6 +3893,57 @@ mod tests {
         assert_eq!(g.nodes[0].label, "Start");
         assert_eq!(g.nodes[1].label, "End");
         assert!(g.dir == Dir::Right);
+    }
+
+    #[test]
+    fn inline_diff_classes_preserve_edges() {
+        let g = parse_graph(
+            "flowchart LR\n  A[Same]:::same --> B[Added]:::added --> C[Removed]:::removed",
+        )
+        .unwrap();
+        assert_eq!(g.edges.len(), 2);
+        assert_eq!(g.nodes[0].diff, Some(DiffClass::Same));
+        assert_eq!(g.nodes[1].diff, Some(DiffClass::Added));
+        assert_eq!(g.nodes[2].diff, Some(DiffClass::Removed));
+    }
+
+    #[test]
+    fn unknown_inline_class_does_not_break_edge_parsing() {
+        let g = parse_graph("flowchart LR\n  A:::custom --> B").unwrap();
+        assert_eq!(g.edges.len(), 1);
+        assert_eq!(g.nodes[0].diff, None);
+    }
+
+    #[test]
+    fn class_statement_applies_to_existing_nodes() {
+        let g = parse_graph("flowchart TD\n  A --> B\n  class A,B changed").unwrap();
+        assert!(
+            g.nodes
+                .iter()
+                .all(|node| node.diff == Some(DiffClass::Changed))
+        );
+    }
+
+    #[test]
+    fn link_style_applies_known_diff_palette_by_edge_index() {
+        let g = parse_graph(
+            "flowchart TD\n  A --> B --> C\n  linkStyle 0 stroke:#cf222e,stroke-dasharray:5\n  linkStyle 1 stroke:#2ea043",
+        )
+        .unwrap();
+        assert_eq!(g.edges[0].diff, Some(DiffClass::Removed));
+        assert_eq!(g.edges[1].diff, Some(DiffClass::Added));
+    }
+
+    #[test]
+    fn state_diagram_supports_inline_and_class_diff_annotations() {
+        let g = parse_state(
+            "stateDiagram-v2\n  Idle:::same --> Running:::added\n  Failed\n  class Failed removed",
+        )
+        .unwrap();
+        let diff = |id: &str| g.nodes[*g.index.get(id).unwrap()].diff;
+        assert_eq!(diff("Idle"), Some(DiffClass::Same));
+        assert_eq!(diff("Running"), Some(DiffClass::Added));
+        assert_eq!(diff("Failed"), Some(DiffClass::Removed));
     }
 
     #[test]

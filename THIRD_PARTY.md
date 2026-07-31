@@ -11,10 +11,10 @@
 Artifact SHA-256:
 
 ```text
-36634da4c9708da2cbb513703a6b6101ccb3c8d0fb95a0aca07944f6b01a0adb
+1fec097f99dfa78c061c0e9722835b663b435d12616c1e6f2bdcf0d5adb14f8c
 ```
 
-Simon Willison's project packages the Mermaid terminal renderer from [`xai-org/grok-build`](https://github.com/xai-org/grok-build), changes two `ratatui` import lines to use a local shim, and adds the WebAssembly wrapper. The renderer is copyright 2023-2026 SpaceXAI. The renderer, shim, and wrapper are licensed under Apache License 2.0; the complete license and modification notice are retained in [`grok-mermaid/LICENSE`](grok-mermaid/LICENSE) and the source headers.
+Simon Willison's project packages the Mermaid terminal renderer from [`xai-org/grok-build`](https://github.com/xai-org/grok-build), changes two `ratatui` import lines to use a local shim, and adds the WebAssembly wrapper. This repository additionally preserves a closed set of semantic code-change classes through flowchart/state parsing, canvas rendering, and HTML serialization, as documented in [`grok-mermaid/README.md`](grok-mermaid/README.md). The renderer is copyright 2023-2026 SpaceXAI. The renderer, shim, and wrapper are licensed under Apache License 2.0; the complete license and modification notice are retained in [`grok-mermaid/LICENSE`](grok-mermaid/LICENSE) and the source headers.
 
 This package is independent and is not affiliated with or endorsed by xAI, SpaceXAI, Grok Build, or Simon Willison.
 
