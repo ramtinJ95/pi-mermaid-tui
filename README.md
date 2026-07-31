@@ -10,6 +10,13 @@ pi install npm:@ramtinj95/pi-mermaid-tui
 
 Reload or restart Pi after installation. The model can then call `render_mermaid` whenever a diagram would clarify its response.
 
+## v0.2.1 patch
+
+Labeled flowchart edges now remain distinct when they converge through adjacent
+or back-routed paths in `TB`, `BT`, `LR`, and `RL` layouts. Sibling fan-out
+labels also receive readable spacing without forcing ordinary 80-column
+diagrams to fall back to source.
+
 ## What's new in v0.2.0
 
 - Per-diagram vertical or horizontal layouts, selected from Mermaid source and
