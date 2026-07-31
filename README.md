@@ -10,6 +10,17 @@ pi install npm:@ramtinj95/pi-mermaid-tui
 
 Reload or restart Pi after installation. The model can then call `render_mermaid` whenever a diagram would clarify its response.
 
+## What's new in v0.2.0
+
+- Per-diagram vertical or horizontal layouts, selected from Mermaid source and
+  guided by the shape of the diagram when the user does not specify one.
+- Theme-aware code-change semantics for added, removed, changed, and unchanged
+  flowchart/state nodes and flowchart edges.
+- Terminal-safe C4-style Context, Container, and Component views built from
+  portable flat flowcharts with explicit architectural labels.
+- Width-aware plain-Unicode golden coverage across the supported diagram
+  families, including narrow-terminal fallback behavior.
+
 ## Supported diagrams
 
 - `graph` and `flowchart`, including subgraphs
@@ -17,6 +28,7 @@ Reload or restart Pi after installation. The model can then call `render_mermaid
 - `stateDiagram`
 - `classDiagram`
 - `erDiagram`
+- C4-style architecture views authored through the flowchart profile below
 
 This is a terminal-oriented subset of Mermaid rather than a complete Mermaid.js implementation. Unsupported diagram families and syntax use the upstream renderer's framed-source fallback. Diagrams that cannot fit the available width may also fall back to source.
 
@@ -73,7 +85,7 @@ internal labels when a boundary matters, for example
 
 Label every relationship with its intent, protocol, or data shape. For code
 changes, show only the changed elements and their directly affected neighbors;
-5–15 nodes and at most two nested boundaries usually remain readable.
+5–15 nodes usually remain readable in a terminal.
 
 ```mermaid
 flowchart TB
