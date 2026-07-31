@@ -210,6 +210,7 @@ struct Graph {
     cur_group: Option<usize>,
     over_cap: bool,
     dir: Dir,
+    pending_diff: HashMap<String, DiffClass>,
 }
 
 impl Graph {
@@ -227,11 +228,8 @@ impl Graph {
         }
         let label = label.unwrap_or(id).to_string();
         self.index.insert(id.to_string(), self.nodes.len());
-        self.nodes.push(Node {
-            label,
-            shape,
-            diff: None,
-        });
+        let diff = self.pending_diff.remove(id);
+        self.nodes.push(Node { label, shape, diff });
         self.node_group.push(self.cur_group);
         Some(self.nodes.len() - 1)
     }
@@ -242,6 +240,14 @@ impl Graph {
             return Some(i);
         }
         self.node_index(id, Some(label), Shape::Round)
+    }
+
+    fn assign_node_diff(&mut self, id: &str, diff: DiffClass) {
+        if let Some(&idx) = self.index.get(id) {
+            self.nodes[idx].diff = Some(diff);
+        } else {
+            self.pending_diff.insert(id.to_string(), diff);
+        }
     }
 }
 
@@ -278,10 +284,10 @@ fn parse_graph(src: &str) -> Option<Graph> {
         cur_group: None,
         over_cap: false,
         dir,
+        pending_diff: HashMap::new(),
     };
 
     let mut stack: Vec<usize> = Vec::new();
-    let mut class_statements: Vec<String> = Vec::new();
     let mut link_style_statements: Vec<String> = Vec::new();
     for st in &statements[1..] {
         let first_word = st.split_whitespace().next().unwrap_or("");
@@ -306,7 +312,7 @@ fn parse_graph(src: &str) -> Option<Graph> {
                 continue;
             }
             "class" => {
-                class_statements.push(st.clone());
+                apply_class_statement(st, &mut graph);
                 continue;
             }
             "linkstyle" => {
@@ -324,9 +330,6 @@ fn parse_graph(src: &str) -> Option<Graph> {
 
     if graph.nodes.is_empty() {
         return None;
-    }
-    for st in &class_statements {
-        apply_class_statement(st, &mut graph);
     }
     for st in &link_style_statements {
         apply_link_style_statement(st, &mut graph);
@@ -515,9 +518,7 @@ fn apply_class_statement(st: &str, graph: &mut Graph) {
         return;
     };
     for id in ids.split(',').map(str::trim).filter(|id| !id.is_empty()) {
-        if let Some(&idx) = graph.index.get(id) {
-            graph.nodes[idx].diff = Some(diff);
-        }
+        graph.assign_node_diff(id, diff);
     }
 }
 
@@ -932,10 +933,10 @@ fn parse_state(src: &str) -> Option<Graph> {
         cur_group: None,
         over_cap: false,
         dir: Dir::Down,
+        pending_diff: HashMap::new(),
     };
 
     let mut in_note = false;
-    let mut class_statements: Vec<String> = Vec::new();
     for st in &statements[1..] {
         if in_note {
             if st.eq_ignore_ascii_case("end note") {
@@ -965,7 +966,7 @@ fn parse_state(src: &str) -> Option<Graph> {
                 }
             }
             "state" => parse_state_decl(st, &mut graph)?,
-            "class" => class_statements.push(st.clone()),
+            "class" => apply_class_statement(st, &mut graph),
             "classdef" | "hide" | "scale" | "}" | "--" => {}
             _ => {
                 if st.contains("-->") {
@@ -982,9 +983,6 @@ fn parse_state(src: &str) -> Option<Graph> {
 
     if graph.nodes.is_empty() {
         return None;
-    }
-    for st in &class_statements {
-        apply_class_statement(st, &mut graph);
     }
     Some(graph)
 }
@@ -1184,6 +1182,7 @@ fn parse_class(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
         cur_group: None,
         over_cap: false,
         dir: Dir::Down,
+        pending_diff: HashMap::new(),
     };
     let mut infos: Vec<ClassInfo> = Vec::new();
     let mut cur_class: Option<usize> = None;
@@ -1433,6 +1432,7 @@ fn parse_er(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
         cur_group: None,
         over_cap: false,
         dir: Dir::Down,
+        pending_diff: HashMap::new(),
     };
     let mut infos: Vec<ClassInfo> = Vec::new();
     let mut cur_entity: Option<usize> = None;
@@ -2333,6 +2333,7 @@ fn build_scope(
         cur_group: None,
         over_cap: false,
         dir: graph.dir,
+        pending_diff: HashMap::new(),
     };
     layout_canvas(&synth, &extras, max_width)
 }
@@ -3929,6 +3930,17 @@ mod tests {
     }
 
     #[test]
+    fn flowchart_diff_assignments_follow_source_order_with_forward_refs() {
+        let g = parse_graph(
+            "flowchart TD\n  class A removed\n  A:::added\n  B:::same\n  class B changed",
+        )
+        .unwrap();
+        let diff = |id: &str| g.nodes[*g.index.get(id).unwrap()].diff;
+        assert_eq!(diff("A"), Some(DiffClass::Added));
+        assert_eq!(diff("B"), Some(DiffClass::Changed));
+    }
+
+    #[test]
     fn link_style_applies_known_diff_palette_by_edge_index() {
         let g = parse_graph(
             "flowchart TD\n  A --> B --> C\n  linkStyle 0 stroke:#cf222e,stroke-dasharray:5\n  linkStyle 1 stroke:#2ea043",
@@ -3948,6 +3960,17 @@ mod tests {
         assert_eq!(diff("Idle"), Some(DiffClass::Same));
         assert_eq!(diff("Running"), Some(DiffClass::Added));
         assert_eq!(diff("Failed"), Some(DiffClass::Removed));
+    }
+
+    #[test]
+    fn state_diff_assignments_follow_source_order_with_forward_refs() {
+        let g = parse_state(
+            "stateDiagram-v2\n  class A removed\n  A:::added\n  B:::same\n  class B changed",
+        )
+        .unwrap();
+        let diff = |id: &str| g.nodes[*g.index.get(id).unwrap()].diff;
+        assert_eq!(diff("A"), Some(DiffClass::Added));
+        assert_eq!(diff("B"), Some(DiffClass::Changed));
     }
 
     #[test]
