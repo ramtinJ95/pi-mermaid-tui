@@ -37,6 +37,12 @@ const cases: GoldenCase[] = [
 			"flowchart TB\n  Start[Start]\n  Old[Old]\n  New[New]\n  Shared[Shared]\n  Start -.->|old route| Old\n  Start -->|new route| New\n  Old -.->|old call| Shared\n  New -->|new call| Shared",
 	},
 	{
+		name: "flowchart-long-fan-out-80",
+		width: 80,
+		source:
+			"flowchart TB\n  Start -->|123456789012345678901234| Old\n  Start -->|abcdefghijklmnopqrstuvwx| New",
+	},
+	{
 		name: "flowchart-lr-40",
 		width: 40,
 		source: "flowchart LR\n  Read[Read] --> Parse[Parse] --> Validate[Validate] --> Write[Write]",

@@ -2141,7 +2141,6 @@ fn layout_canvas(
             ),
         }
     }
-    let shared_target_labels = shared_target_label_edges(graph, &ranks);
     for (i, edge) in graph.edges.iter().enumerate() {
         canvas.cur_diff = edge.diff;
         canvas.cur_style = match edge.line {
@@ -2159,9 +2158,9 @@ fn layout_canvas(
         let lane = plan.lane_base + plan.edge_lane[i];
         match (vertical, adjacent) {
             (true, true) => route_forward(&mut canvas, from, to, edge, bus, plan.edge_label_row[i]),
-            (true, false) => route_back(&mut canvas, from, to, edge, lane),
+            (true, false) => route_back(&mut canvas, from, to, edge, lane, plan.edge_label_row[i]),
             (false, true) => {
-                route_forward_lr(&mut canvas, from, to, edge, bus, shared_target_labels[i])
+                route_forward_lr(&mut canvas, from, to, edge, bus, plan.edge_label_slot[i])
             }
             (false, false) => route_back_lr(&mut canvas, from, to, edge, lane),
         }
@@ -2433,22 +2432,17 @@ fn lane_spans(
         .collect()
 }
 
-fn shared_target_label_edges(graph: &Graph, ranks: &[usize]) -> Vec<bool> {
+fn shared_target_label_edges(graph: &Graph) -> Vec<bool> {
     let mut labeled_incoming = vec![0usize; graph.nodes.len()];
     for edge in &graph.edges {
-        if edge.label.is_some() && edge.from != edge.to && ranks[edge.to] == ranks[edge.from] + 1 {
+        if edge.label.is_some() && edge.from != edge.to {
             labeled_incoming[edge.to] += 1;
         }
     }
     graph
         .edges
         .iter()
-        .map(|edge| {
-            edge.label.is_some()
-                && edge.from != edge.to
-                && ranks[edge.to] == ranks[edge.from] + 1
-                && labeled_incoming[edge.to] > 1
-        })
+        .map(|edge| edge.label.is_some() && edge.from != edge.to && labeled_incoming[edge.to] > 1)
         .collect()
 }
 
@@ -2462,17 +2456,24 @@ fn place_td(
 ) -> RoutePlan {
     let mut layout_w = sizes.lay_w.clone();
     let mut labeled_outgoing = vec![0usize; graph.nodes.len()];
+    let mut fan_out_label_w = vec![0usize; graph.nodes.len()];
     for edge in &graph.edges {
         if edge.label.is_some() && edge.from != edge.to && ranks[edge.to] == ranks[edge.from] + 1 {
             labeled_outgoing[edge.from] += 1;
+            fan_out_label_w[edge.from] = fan_out_label_w[edge.from].max(
+                edge.label
+                    .as_ref()
+                    .map(|label| label.width().min(MAX_LABEL))
+                    .unwrap_or(0),
+            );
         }
     }
     for edge in &graph.edges {
         if labeled_outgoing[edge.from] > 1
             && ranks[edge.to] == ranks[edge.from] + 1
-            && let Some(label) = &edge.label
+            && edge.label.is_some()
         {
-            let label_footprint = 2 * (label.width().min(MAX_LABEL) + 1) + 1;
+            let label_footprint = fan_out_label_w[edge.from] + 1;
             layout_w[edge.to] = layout_w[edge.to].max(label_footprint);
         }
     }
@@ -2492,7 +2493,7 @@ fn place_td(
         *tracks = count;
     }
 
-    let shared_labels = shared_target_label_edges(graph, ranks);
+    let shared_labels = shared_target_label_edges(graph);
     let mut label_rows = vec![0usize; max_rank + 1];
     let mut edge_label_slot = vec![None; graph.edges.len()];
     for (i, edge) in graph.edges.iter().enumerate() {
@@ -2502,7 +2503,6 @@ fn place_td(
             label_rows[band] += 1;
         }
     }
-
     let rank_h: Vec<usize> = by_rank
         .iter()
         .map(|row| {
@@ -2517,7 +2517,7 @@ fn place_td(
         let gap = GAP_Y.max(bus_tracks[r - 1] + label_rows[r - 1] + 1);
         rank_y[r] = rank_y[r - 1] + rank_h[r - 1] + gap;
     }
-    let canvas_h = rank_y[max_rank] + rank_h[max_rank];
+    let canvas_h = rank_y[max_rank] + rank_h[max_rank] + label_rows[max_rank];
     let band_end: Vec<usize> = (0..=max_rank).map(|r| rank_y[r] + rank_h[r]).collect();
     let edge_label_row: Vec<Option<usize>> = graph
         .edges
@@ -2587,6 +2587,7 @@ fn place_td(
         lane_base,
         edge_lane,
         edge_label_row,
+        edge_label_slot: vec![None; graph.edges.len()],
     }
 }
 
@@ -2612,7 +2613,24 @@ fn place_lr(
         .unwrap_or(0);
     let base_gap = (GAP_X + 1).max(max_label + 3);
 
-    let centers = assign_positions(by_rank, &sizes.lay_h, 1, &graph.edges, ranks);
+    let shared_labels = shared_target_label_edges(graph);
+    let mut edge_label_slot = vec![None; graph.edges.len()];
+    let mut source_label_count = vec![0usize; graph.nodes.len()];
+    for (i, edge) in graph.edges.iter().enumerate() {
+        if shared_labels[i] && ranks[edge.to] == ranks[edge.from] + 1 {
+            edge_label_slot[i] = Some(source_label_count[edge.from]);
+            source_label_count[edge.from] += 1;
+        }
+    }
+    let mut layout_h = sizes.lay_h.clone();
+    for (node, &count) in source_label_count.iter().enumerate() {
+        if count > 0 {
+            let max_offset = count.div_ceil(2);
+            layout_h[node] = layout_h[node].max(2 * max_offset + 1);
+        }
+    }
+
+    let centers = assign_positions(by_rank, &layout_h, 1, &graph.edges, ranks);
 
     let mut edge_bus = vec![0usize; graph.edges.len()];
     let mut bus_tracks = vec![0usize; max_rank + 1];
@@ -2630,7 +2648,7 @@ fn place_lr(
 
     let mut rank_x = vec![0usize; max_rank + 1];
     for r in 1..=max_rank {
-        let gap = base_gap.max(bus_tracks[r - 1] + 1);
+        let gap = base_gap.max(bus_tracks[r - 1] + max_label + 2);
         rank_x[r] = rank_x[r - 1] + col_w[r - 1] + gap;
     }
     let canvas_w = rank_x[max_rank]
@@ -2663,6 +2681,12 @@ fn place_lr(
             diagram_h = diagram_h.max(y + h + sizes.extra_h[idx]);
         }
     }
+    for (i, slot) in edge_label_slot.iter().enumerate() {
+        if let Some(slot) = slot {
+            diagram_h =
+                diagram_h.max(lr_source_label_row(placed[graph.edges[i].from].cy, *slot) + 1);
+        }
+    }
 
     let mut edge_lane = vec![0usize; graph.edges.len()];
     let lanes = lane_spans(graph, ranks, placed, false);
@@ -2683,6 +2707,7 @@ fn place_lr(
         lane_base,
         edge_lane,
         edge_label_row: vec![None; graph.edges.len()],
+        edge_label_slot,
     }
 }
 
@@ -2693,6 +2718,7 @@ struct RoutePlan {
     lane_base: usize,
     edge_lane: Vec<usize>,
     edge_label_row: Vec<Option<usize>>,
+    edge_label_slot: Vec<Option<usize>>,
 }
 
 fn assign_tracks(spans: &[(usize, usize, usize, usize, usize)]) -> (Vec<(usize, usize)>, usize) {
@@ -3139,7 +3165,14 @@ fn route_self(canvas: &mut Canvas, p: &Placed, edge: &Edge) {
     }
 }
 
-fn route_back(canvas: &mut Canvas, from: &Placed, to: &Placed, edge: &Edge, lane_x: usize) {
+fn route_back(
+    canvas: &mut Canvas,
+    from: &Placed,
+    to: &Placed,
+    edge: &Edge,
+    lane_x: usize,
+    label_row: Option<usize>,
+) {
     let sx = from.x + from.w - 1;
     let sy = from.cy;
     let tx = to.x + to.w - 1;
@@ -3160,12 +3193,25 @@ fn route_back(canvas: &mut Canvas, from: &Placed, to: &Placed, edge: &Edge, lane
     }
 
     if let Some(label) = &edge.label {
-        place_label(
-            canvas,
-            label,
-            tyc.saturating_sub(1),
-            lane_x.saturating_sub(label.width() + 1),
-        );
+        if let Some(row) = label_row {
+            place_label(canvas, label, row, sx + 2);
+        } else {
+            place_label(
+                canvas,
+                label,
+                tyc.saturating_sub(1),
+                lane_x.saturating_sub(label.width() + 1),
+            );
+        }
+    }
+}
+
+fn lr_source_label_row(center: usize, slot: usize) -> usize {
+    let distance = slot / 2 + 1;
+    if slot.is_multiple_of(2) {
+        center.saturating_sub(distance)
+    } else {
+        center + distance
     }
 }
 
@@ -3175,7 +3221,7 @@ fn route_forward_lr(
     to: &Placed,
     edge: &Edge,
     bus: usize,
-    label_near_source: bool,
+    label_slot: Option<usize>,
 ) {
     let rx = from.x + from.w - 1;
     let ry = from.cy;
@@ -3201,8 +3247,8 @@ fn route_forward_lr(
     }
 
     if let Some(label) = &edge.label {
-        let row = if label_near_source {
-            ry.saturating_sub(1)
+        let row = if let Some(slot) = label_slot {
+            lr_source_label_row(ry, slot)
         } else {
             ly.saturating_sub(1)
         };
@@ -4421,6 +4467,41 @@ mod tests {
     }
 
     #[test]
+    fn labeled_back_routed_fan_in_preserves_each_label_in_td_and_bt() {
+        for direction in ["TD", "BT"] {
+            let out = plain(&format!(
+                "graph {direction}\n A --> B --> C --> X\n A -->|A to X| X\n B -->|B to X| X\n C -->|C to X| X"
+            ));
+            for label in ["A to X", "B to X", "C to X"] {
+                assert_eq!(
+                    out.matches(label).count(),
+                    1,
+                    "{direction} {label:?}:\n{out}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn labeled_parallel_fan_in_preserves_each_label_in_lr_and_rl() {
+        for direction in ["LR", "RL"] {
+            let out = plain(&format!("graph {direction}\n A -->|one| X\n A -->|two| X"));
+            assert_eq!(out.matches("one").count(), 1, "{direction}:\n{out}");
+            assert_eq!(out.matches("two").count(), 1, "{direction}:\n{out}");
+        }
+    }
+
+    #[test]
+    fn labeled_bipartite_lr_graph_preserves_every_label() {
+        let out = plain(
+            "graph LR\n A -->|A-X| X\n A -->|A-Y| Y\n B -->|B-X| X\n B -->|B-Y| Y\n C -->|C-X| X\n C -->|C-Y| Y",
+        );
+        for label in ["A-X", "A-Y", "B-X", "B-Y", "C-X", "C-Y"] {
+            assert_eq!(out.matches(label).count(), 1, "{label:?}:\n{out}");
+        }
+    }
+
+    #[test]
     fn labeled_fan_out_keeps_sibling_labels_separate() {
         let out = plain("graph TD\n Start -->|old route| Old\n Start -->|new route| New");
         let label_row = out
@@ -4435,6 +4516,20 @@ mod tests {
                 .any(char::is_whitespace),
             "sibling labels need visible separation:\n{out}"
         );
+    }
+
+    #[test]
+    fn long_labeled_fan_out_fits_eighty_columns() {
+        let src = "graph TD\n Start -->|123456789012345678901234| Old\n Start -->|abcdefghijklmnopqrstuvwx| New";
+        let lines = render(src, &styles(), Some(80)).unwrap().plain_lines;
+        let out = lines.join("\n");
+        assert!(
+            !out.contains("mermaid: graph"),
+            "unexpected fallback:\n{out}"
+        );
+        assert!(out.contains("123456789012345678901234"), "{out}");
+        assert!(out.contains("abcdefghijklmnopqrstuvwx"), "{out}");
+        assert!(lines.iter().all(|line| line.width() <= 80), "{out}");
     }
 
     #[test]
