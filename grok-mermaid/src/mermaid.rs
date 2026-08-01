@@ -1298,12 +1298,19 @@ fn class_node_index(
     generic_label_is_authoritative: bool,
 ) -> Option<usize> {
     let generic_markers = name.chars().filter(|&c| c == '~').count();
-    let base = if generic_markers >= 2 && generic_markers % 2 == 0 && name.ends_with('~') {
-        name.split_once('~').map(|(base, _)| base).unwrap_or(name)
-    } else {
-        name
+    let (base, has_generic) = match generic_markers {
+        0 => (name, false),
+        2 if name.ends_with('~') => {
+            let (base, suffix) = name.split_once('~')?;
+            let generic = suffix.strip_suffix('~')?;
+            if base.is_empty() || generic.is_empty() {
+                return None;
+            }
+            (base, true)
+        }
+        _ => return None,
     };
-    let label = (base != name
+    let label = (has_generic
         && (generic_label_is_authoritative || !graph.index.contains_key(base)))
     .then_some(name);
     graph.node_index(base, label, Shape::Rect)
@@ -5206,6 +5213,18 @@ mod tests {
         let annotation = plain("classDiagram\n <<interface>> Shape~T~");
         assert!(annotation.contains("Shape<T>"), "{annotation}");
         assert!(annotation.contains("«interface»"), "{annotation}");
+    }
+
+    #[test]
+    fn malformed_class_generic_identities_fall_back() {
+        for source in [
+            "classDiagram\n class ~T~",
+            "classDiagram\n class Dog~~",
+            "classDiagram\n class Dog~T~x~U~",
+        ] {
+            let out = plain(source);
+            assert!(out.contains("mermaid: classDiagram"), "{source}:\n{out}");
+        }
     }
 
     #[test]
