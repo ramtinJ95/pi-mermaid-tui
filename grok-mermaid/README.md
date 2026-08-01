@@ -28,6 +28,14 @@ architecture with these local modifications:
 - Labeled fan-in edges retain every label: vertical layouts allocate separate
   label rows, horizontal layouts place labels beside their source branches,
   and vertical fan-out reserves enough width between sibling labels.
+- Generic class declarations use Mermaid's base-name identity, so later
+  relationships such as `Owner --> Dog` reuse `class Dog~T~` instead of
+  creating a second `Dog` node.
+- Quoted ER entity aliases remain valid when their declaration also opens an
+  attribute block, matching Mermaid's `a["Customer Account"] { ... }` form.
+- Source fallbacks, including their title and width warning, honor very narrow
+  terminal widths and direct users to the displayed source rather than to an
+  image that this package does not produce.
 
 This deliberately does not implement arbitrary Mermaid CSS. The semantic
 classes are a closed, terminal-theme-friendly profile. Upstream tests are

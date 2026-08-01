@@ -11,10 +11,10 @@
 Artifact SHA-256:
 
 ```text
-73872eab9b5c77a306ed7e3f80fc56e9cb274e5499fbbc927340ca69526253f5
+1343ace3adbf25ca2ba66a8e47dde2b6a8e8cd79370281e927f11fd817907790
 ```
 
-Simon Willison's project packages the Mermaid terminal renderer from [`xai-org/grok-build`](https://github.com/xai-org/grok-build), changes two `ratatui` import lines to use a local shim, and adds the WebAssembly wrapper. This repository additionally preserves a closed set of semantic code-change classes and retains labels on converging flowchart edges, as documented in [`grok-mermaid/README.md`](grok-mermaid/README.md). The renderer is copyright 2023-2026 SpaceXAI. The renderer, shim, and wrapper are licensed under Apache License 2.0; the complete license and modification notice are retained in [`grok-mermaid/LICENSE`](grok-mermaid/LICENSE) and the source headers.
+Simon Willison's project packages the Mermaid terminal renderer from [`xai-org/grok-build`](https://github.com/xai-org/grok-build), changes two `ratatui` import lines to use a local shim, and adds the WebAssembly wrapper. This repository additionally preserves a closed set of semantic code-change classes, retains labels on converging flowchart edges, keeps generic class references unified, supports quoted ER aliases with attribute blocks, and constrains source fallbacks to narrow terminal widths, as documented in [`grok-mermaid/README.md`](grok-mermaid/README.md). The renderer is copyright 2023-2026 SpaceXAI. The renderer, shim, and wrapper are licensed under Apache License 2.0; the complete license and modification notice are retained in [`grok-mermaid/LICENSE`](grok-mermaid/LICENSE) and the source headers.
 
 This package is independent and is not affiliated with or endorsed by xAI, SpaceXAI, Grok Build, or Simon Willison.
 
