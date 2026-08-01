@@ -1271,7 +1271,7 @@ fn parse_class(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
             if id.is_empty() || id.contains(char::is_whitespace) || member.is_empty() {
                 return None;
             }
-            let idx = class_node_index(&mut graph, id, true)?;
+            let idx = class_node_index(&mut graph, id, false)?;
             sync_infos(&graph, &mut infos);
             push_member(&mut infos[idx], member);
             continue;
@@ -1303,7 +1303,9 @@ fn class_node_index(
     } else {
         name
     };
-    let label = (generic_label_is_authoritative && base != name).then_some(name);
+    let label = (base != name
+        && (generic_label_is_authoritative || !graph.index.contains_key(base)))
+    .then_some(name);
     graph.node_index(base, label, Shape::Rect)
 }
 
@@ -5185,6 +5187,25 @@ mod tests {
         assert!(!out.contains("Dog<U>"), "{out}");
         assert!(!out.lines().any(|line| line.contains("│ Dog │")), "{out}");
         assert!(out.contains("owns"), "{out}");
+    }
+
+    #[test]
+    fn class_generic_member_does_not_relabel_an_explicit_declaration() {
+        let out =
+            plain("classDiagram\n class Dog~T~\n Dog~U~ : +String name\n Owner --> Dog : owns");
+        assert!(out.contains("Dog<T>"), "{out}");
+        assert!(!out.contains("Dog<U>"), "{out}");
+        assert!(out.contains("+String name"), "{out}");
+    }
+
+    #[test]
+    fn class_generic_references_label_new_nodes() {
+        let relation = plain("classDiagram\n Dog~T~ --> Owner");
+        assert!(relation.contains("Dog<T>"), "{relation}");
+
+        let annotation = plain("classDiagram\n <<interface>> Shape~T~");
+        assert!(annotation.contains("Shape<T>"), "{annotation}");
+        assert!(annotation.contains("«interface»"), "{annotation}");
     }
 
     #[test]
