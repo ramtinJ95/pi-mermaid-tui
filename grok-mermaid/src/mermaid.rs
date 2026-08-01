@@ -1507,9 +1507,6 @@ fn parse_er(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
             Some(d) => (d.trim(), true),
             None => (st.as_str(), false),
         };
-        if !is_er_entity_declaration(decl) {
-            return None;
-        }
         let idx = er_entity(&mut graph, &mut infos, decl)?;
         if open {
             cur_entity = Some(idx);
@@ -1523,44 +1520,68 @@ fn parse_er(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
     Some((graph, infos))
 }
 
-fn is_er_entity_declaration(decl: &str) -> bool {
-    if let Some(open) = decl.find('[') {
-        let id = &decl[..open];
-        if id.is_empty() || id.contains(char::is_whitespace) {
-            return false;
-        }
-
-        let mut in_quotes = false;
-        let mut close = None;
-        for (offset, c) in decl[open + 1..].char_indices() {
-            if c == '"' {
-                in_quotes = !in_quotes;
-            } else if c == ']' && !in_quotes {
-                close = Some(open + 1 + offset);
-                break;
-            }
-        }
-        let Some(close) = close else {
-            return false;
-        };
-        return close + 1 == decl.len() && !clean_label(&decl[open + 1..close]).is_empty();
-    }
-    !decl.is_empty() && decl.split_whitespace().count() == 1
-}
-
 fn er_entity(graph: &mut Graph, infos: &mut Vec<ClassInfo>, token: &str) -> Option<usize> {
-    let idx = if let Some(open) = token.find('[') {
-        let id = &token[..open];
-        let label = clean_label(token[open + 1..].trim_end_matches(']'));
-        if id.is_empty() || label.is_empty() {
-            return None;
-        }
+    let (id, label) = parse_er_entity_token(token)?;
+    let idx = if let Some(label) = label {
         graph.node_label(id, &label)?
     } else {
-        graph.node_index(token, None, Shape::Rect)?
+        graph.node_index(id, None, Shape::Rect)?
     };
     sync_infos(graph, infos);
     Some(idx)
+}
+
+fn parse_er_entity_token(token: &str) -> Option<(&str, Option<String>)> {
+    let Some(open) = token.find('[') else {
+        if token.is_empty()
+            || token.contains(char::is_whitespace)
+            || token.contains(['[', ']', '"'])
+        {
+            return None;
+        }
+        return Some((token, None));
+    };
+
+    let id = &token[..open];
+    if id.is_empty() || id.contains(char::is_whitespace) || id.contains(['[', ']', '"']) {
+        return None;
+    }
+
+    let mut in_quotes = false;
+    let mut close = None;
+    for (offset, c) in token[open + 1..].char_indices() {
+        if c == '"' {
+            in_quotes = !in_quotes;
+        } else if c == ']' && !in_quotes {
+            close = Some(open + 1 + offset);
+            break;
+        }
+    }
+    let close = close?;
+    if close + 1 != token.len() {
+        return None;
+    }
+
+    let alias = &token[open + 1..close];
+    if let Some(quoted) = alias
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+    {
+        if quoted.is_empty() || quoted.contains('"') {
+            return None;
+        }
+    } else if alias.is_empty()
+        || alias.contains(char::is_whitespace)
+        || alias.contains(['[', ']', '"'])
+    {
+        return None;
+    }
+
+    let label = clean_label(alias);
+    if label.is_empty() {
+        return None;
+    }
+    Some((id, Some(label)))
 }
 
 fn split_er_relationship(st: &str) -> Option<(&str, Option<&str>)> {
@@ -5352,10 +5373,36 @@ mod tests {
 
     #[test]
     fn er_malformed_alias_declarations_fall_back() {
-        for declaration in ["a [Account]", "a[foo] trailing]", "a[foo][bar]"] {
+        for declaration in [
+            "a [Account]",
+            "a[foo] trailing]",
+            "a[foo][bar]",
+            "a[\"foo\" bar]",
+            "a[foo \"bar\"]",
+        ] {
             let out = plain(&format!("erDiagram\n {declaration} {{\n string value\n }}"));
             assert!(out.contains("mermaid: erDiagram"), "{declaration}:\n{out}");
         }
+    }
+
+    #[test]
+    fn er_malformed_relationship_entities_fall_back() {
+        for relationship in [
+            "a[foo][bar] ||--|| b : x",
+            "a] ||--|| b : x",
+            "a[\"foo\"bar] ||--|| b : x",
+        ] {
+            let out = plain(&format!("erDiagram\n {relationship}"));
+            assert!(out.contains("mermaid: erDiagram"), "{relationship}:\n{out}");
+        }
+    }
+
+    #[test]
+    fn er_valid_alias_relationship_renders() {
+        let out = plain("erDiagram\n a[Account] ||--|| b : owns");
+        assert!(!out.contains("mermaid: erDiagram"), "{out}");
+        assert!(out.contains("Account"), "{out}");
+        assert!(out.contains("1 owns 1"), "{out}");
     }
 
     #[test]
