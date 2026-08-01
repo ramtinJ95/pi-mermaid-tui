@@ -3866,7 +3866,7 @@ fn draw_seq_text(canvas: &mut Canvas, text: &str, x: usize, y: usize, cls: Cls) 
 }
 
 const TOO_WIDE_HINT: &str =
-    "This diagram is too wide to display here \u{2014} open the image to view it in full.";
+    "This diagram is too wide for the available terminal width; Mermaid source is shown above.";
 
 fn fallback(
     src: &str,
@@ -3874,9 +3874,38 @@ fn fallback(
     max_width: Option<usize>,
     too_wide: bool,
 ) -> MermaidArt {
+    if let Some(width) = max_width
+        && width < 5
+    {
+        let mut plain: Vec<String> = src
+            .lines()
+            .map(str::trim_end)
+            .skip_while(|line| line.is_empty())
+            .flat_map(|line| chunk_line(line, Some(width)))
+            .collect();
+        let mut styled: Vec<Line<'static>> = plain
+            .iter()
+            .map(|line| Line::from(Span::styled(line.clone(), styles.node_text)))
+            .collect();
+        if too_wide {
+            let hint_style = styles.border.add_modifier(Modifier::ITALIC);
+            for chunk in wrap_words(TOO_WIDE_HINT, Some(width)) {
+                styled.push(Line::from(Span::styled(chunk.clone(), hint_style)));
+                plain.push(chunk);
+            }
+        }
+        return MermaidArt {
+            styled_lines: styled,
+            plain_lines: plain,
+        };
+    }
+
     let header = first_word(src);
-    let title = format!(" mermaid: {header} ");
-    let limit = max_width.map(|m| m.saturating_sub(4).max(8));
+    let full_title = format!(" mermaid: {header} ");
+    let limit = max_width.map(|m| m.saturating_sub(4));
+    let title = limit
+        .and_then(|width| chunk_line(&full_title, Some(width)).into_iter().next())
+        .unwrap_or(full_title);
     let body: Vec<String> = src
         .lines()
         .map(|l| l.trim_end())
@@ -3942,6 +3971,9 @@ fn chunk_line(line: &str, limit: Option<usize>) -> Vec<String> {
     let Some(limit) = limit else {
         return vec![line.to_string()];
     };
+    if limit == 0 {
+        return Vec::new();
+    }
     if line.width() <= limit {
         return vec![line.to_string()];
     }
@@ -3950,6 +3982,14 @@ fn chunk_line(line: &str, limit: Option<usize>) -> Vec<String> {
     let mut cur_w = 0usize;
     for c in line.chars() {
         let cw = char_width(c).max(1);
+        if cw > limit {
+            if !cur.is_empty() {
+                out.push(std::mem::take(&mut cur));
+                cur_w = 0;
+            }
+            out.push("?".to_string());
+            continue;
+        }
         if cur_w + cw > limit && !cur.is_empty() {
             out.push(std::mem::take(&mut cur));
             cur_w = 0;
@@ -4757,8 +4797,8 @@ mod tests {
             .expect("note row");
         assert!(note > bottom, "note must be below the box:\n{joined}");
         assert!(
-            joined.contains("open the image"),
-            "note points at the image:\n{joined}"
+            joined.contains("Mermaid source") && joined.contains("is shown above"),
+            "note points at the source fallback:\n{joined}"
         );
 
         assert!(
@@ -4981,6 +5021,19 @@ mod tests {
             );
         }
         assert!(out.join("\n").contains("nicely"), "{}", out.join("\n"));
+    }
+
+    #[test]
+    fn fallback_respects_very_narrow_widths() {
+        let source = "flowchart LR\n Alpha --> Beta --> Gamma";
+        for width in 1..=24 {
+            let out = render(source, &styles(), Some(width)).unwrap().plain_lines;
+            assert!(
+                out.iter().all(|line| line.width() <= width),
+                "fallback exceeded {width} columns:\n{}",
+                out.join("\n")
+            );
+        }
     }
 
     #[test]
