@@ -1226,7 +1226,7 @@ fn parse_class(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
                 if name.is_empty() || name.contains(char::is_whitespace) {
                     return None;
                 }
-                let idx = graph.node_index(name, None, Shape::Rect)?;
+                let idx = class_node_index(&mut graph, name)?;
                 sync_infos(&graph, &mut infos);
                 if open {
                     cur_class = Some(idx);
@@ -1241,15 +1241,15 @@ fn parse_class(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
             if name.is_empty() || name.contains(char::is_whitespace) {
                 return None;
             }
-            let idx = graph.node_index(name, None, Shape::Rect)?;
+            let idx = class_node_index(&mut graph, name)?;
             sync_infos(&graph, &mut infos);
             infos[idx].annotation = Some(ann.trim().to_string());
             continue;
         }
         if let Some((from, to, head_from, head_to, line, label)) = parse_class_relation(st) {
-            let f = graph.node_index(&from, None, Shape::Rect)?;
+            let f = class_node_index(&mut graph, &from)?;
             sync_infos(&graph, &mut infos);
-            let t = graph.node_index(&to, None, Shape::Rect)?;
+            let t = class_node_index(&mut graph, &to)?;
             sync_infos(&graph, &mut infos);
             if graph.edges.len() >= MAX_EDGES {
                 return None;
@@ -1271,7 +1271,7 @@ fn parse_class(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
             if id.is_empty() || id.contains(char::is_whitespace) || member.is_empty() {
                 return None;
             }
-            let idx = graph.node_index(id, None, Shape::Rect)?;
+            let idx = class_node_index(&mut graph, id)?;
             sync_infos(&graph, &mut infos);
             push_member(&mut infos[idx], member);
             continue;
@@ -1290,6 +1290,17 @@ fn sync_infos(graph: &Graph, infos: &mut Vec<ClassInfo>) {
     while infos.len() < graph.nodes.len() {
         infos.push(ClassInfo::default());
     }
+}
+
+fn class_node_index(graph: &mut Graph, name: &str) -> Option<usize> {
+    let generic_markers = name.chars().filter(|&c| c == '~').count();
+    let base = if generic_markers >= 2 && generic_markers % 2 == 0 && name.ends_with('~') {
+        name.split_once('~').map(|(base, _)| base).unwrap_or(name)
+    } else {
+        name
+    };
+    let label = (base != name).then_some(name);
+    graph.node_index(base, label, Shape::Rect)
 }
 
 fn push_member(info: &mut ClassInfo, raw: &str) {
@@ -5116,6 +5127,34 @@ mod tests {
         let out = plain("classDiagram\n Shape~T~ : +area() T\n S --> Shape~T~");
         assert!(out.contains("Shape<T>"), "{out}");
         assert!(!out.contains('~'), "{out}");
+    }
+
+    #[test]
+    fn class_generic_definition_uses_base_identifier() {
+        let (graph, infos) = parse_class(
+            "classDiagram\n class Dog~T~ {\n +fetch(item: T) bool\n }\n Owner --> Dog : owns",
+        )
+        .unwrap();
+        assert_eq!(graph.nodes.len(), 2);
+        assert_eq!(
+            graph
+                .nodes
+                .iter()
+                .filter(|node| node.label.starts_with("Dog"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            infos.iter().filter(|info| !info.methods.is_empty()).count(),
+            1
+        );
+
+        let out = plain(
+            "classDiagram\n class Dog~T~ {\n +fetch(item: T) bool\n }\n Owner --> Dog : owns",
+        );
+        assert_eq!(out.matches("Dog<T>").count(), 1, "{out}");
+        assert!(!out.lines().any(|line| line.contains("│ Dog │")), "{out}");
+        assert!(out.contains("owns"), "{out}");
     }
 
     #[test]
