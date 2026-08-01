@@ -6,6 +6,6 @@
 │ a service]           │
 ╰──────────────────────╯
 This diagram is too wide
-to display here — open
-the image to view it in
-full.
+for the available
+terminal width; Mermaid
+source is shown above.

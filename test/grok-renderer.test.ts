@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { grokHtmlToPlainLines, loadGrokRenderer, parseGrokHtmlLine } from "../src/grok-renderer.ts";
 
 const diagramFamilies = [
@@ -53,7 +54,18 @@ test("honors a width cap by returning output that fits", async () => {
 	const html = renderer.renderHtml("graph LR\n  A[Alpha] --> B[Beta] --> C[Gamma]", 24);
 	const lines = grokHtmlToPlainLines(html);
 	assert.ok(lines.length > 0);
-	for (const line of lines) assert.ok(line.length <= 24, `${line.length}: ${line}`);
+	for (const line of lines) assert.ok(visibleWidth(line) <= 24, `${visibleWidth(line)}: ${line}`);
+});
+
+test("keeps source fallbacks within very narrow width caps", async () => {
+	const renderer = await loadGrokRenderer();
+	for (const width of [1, 4, 12]) {
+		const lines = grokHtmlToPlainLines(renderer.renderHtml("flowchart LR\n  Alpha --> Beta --> Gamma", width));
+		assert.ok(lines.length > 0);
+		for (const line of lines) {
+			assert.ok(visibleWidth(line) <= width, `${visibleWidth(line)} > ${width}: ${line}`);
+		}
+	}
 });
 
 test("decodes the renderer's controlled HTML spans", () => {
@@ -104,4 +116,73 @@ test("renders a C4-style component view through flowchart conventions", async ()
 		/Person: Reviewer[\s\S]*▼reviews behavior[\s\S]*Container: API[\s\S]*▼publishes Job[\s\S]*External: Queue[\s\S]*▼delivers Job[\s\S]*Component: Worker/,
 	);
 	assert.doesNotMatch(plain, /mermaid: flowchart/i);
+});
+
+test("uses a generic class's base name for later relationships", async () => {
+	const renderer = await loadGrokRenderer();
+	const plain = grokHtmlToPlainLines(
+		renderer.renderHtml(
+			"classDiagram\n  class Dog~T~ {\n    +fetch(item: T) bool\n  }\n  Dog~U~ : +String name\n  Owner --> Dog~U~ : owns",
+			120,
+		),
+	).join("\n");
+	assert.equal(plain.match(/Dog<T>/g)?.length, 1, plain);
+	assert.doesNotMatch(plain, /Dog<U>/);
+	assert.doesNotMatch(plain, /│ Dog │/);
+	assert.match(plain, /\+String name/);
+	assert.match(plain, /owns/);
+});
+
+test("keeps generic labels when references create class nodes", async () => {
+	const renderer = await loadGrokRenderer();
+	const relation = grokHtmlToPlainLines(renderer.renderHtml("classDiagram\n  Dog~T~ --> Owner", 120)).join("\n");
+	assert.match(relation, /Dog<T>/);
+
+	const annotation = grokHtmlToPlainLines(
+		renderer.renderHtml("classDiagram\n  <<interface>> Shape~T~", 120),
+	).join("\n");
+	assert.match(annotation, /Shape<T>/);
+	assert.match(annotation, /«interface»/);
+});
+
+test("falls back for malformed generic class identities", async () => {
+	const renderer = await loadGrokRenderer();
+	for (const source of [
+		"classDiagram\n  class ~T~",
+		"classDiagram\n  class Dog~~",
+		"classDiagram\n  class Dog~T~x~U~",
+	]) {
+		const plain = grokHtmlToPlainLines(renderer.renderHtml(source, 120)).join("\n");
+		assert.match(plain, /mermaid: classDiagram/, source);
+	}
+});
+
+test("renders quoted ER aliases that declare attributes", async () => {
+	const renderer = await loadGrokRenderer();
+	const plain = grokHtmlToPlainLines(
+		renderer.renderHtml(
+			'erDiagram\n  p[Person] {\n    string name\n  }\n  a["Customer Account"] {\n    string email\n  }\n  p ||--o| a : has',
+			120,
+		),
+	).join("\n");
+	assert.doesNotMatch(plain, /mermaid: erDiagram/);
+	for (const label of ["Person", "Customer Account", "string email", "1 has 0..1"]) {
+		assert.match(plain, new RegExp(label));
+	}
+});
+
+test("falls back for malformed ER entity tokens", async () => {
+	const renderer = await loadGrokRenderer();
+	for (const source of [
+		"erDiagram\n  a [Account] {\n    string value\n  }",
+		"erDiagram\n  a[foo] trailing] {\n    string value\n  }",
+		"erDiagram\n  a[foo][bar] {\n    string value\n  }",
+		'erDiagram\n  a["foo" bar] {\n    string value\n  }',
+		'erDiagram\n  a[foo "bar"] {\n    string value\n  }',
+		"erDiagram\n  a[foo][bar] ||--|| b : x",
+		"erDiagram\n  a] ||--|| b : x",
+	]) {
+		const plain = grokHtmlToPlainLines(renderer.renderHtml(source, 120)).join("\n");
+		assert.match(plain, /mermaid: erDiagram/, source);
+	}
 });
