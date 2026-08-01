@@ -1226,7 +1226,7 @@ fn parse_class(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
                 if name.is_empty() || name.contains(char::is_whitespace) {
                     return None;
                 }
-                let idx = class_node_index(&mut graph, name)?;
+                let idx = class_node_index(&mut graph, name, true)?;
                 sync_infos(&graph, &mut infos);
                 if open {
                     cur_class = Some(idx);
@@ -1241,15 +1241,15 @@ fn parse_class(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
             if name.is_empty() || name.contains(char::is_whitespace) {
                 return None;
             }
-            let idx = class_node_index(&mut graph, name)?;
+            let idx = class_node_index(&mut graph, name, false)?;
             sync_infos(&graph, &mut infos);
             infos[idx].annotation = Some(ann.trim().to_string());
             continue;
         }
         if let Some((from, to, head_from, head_to, line, label)) = parse_class_relation(st) {
-            let f = class_node_index(&mut graph, &from)?;
+            let f = class_node_index(&mut graph, &from, false)?;
             sync_infos(&graph, &mut infos);
-            let t = class_node_index(&mut graph, &to)?;
+            let t = class_node_index(&mut graph, &to, false)?;
             sync_infos(&graph, &mut infos);
             if graph.edges.len() >= MAX_EDGES {
                 return None;
@@ -1271,7 +1271,7 @@ fn parse_class(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
             if id.is_empty() || id.contains(char::is_whitespace) || member.is_empty() {
                 return None;
             }
-            let idx = class_node_index(&mut graph, id)?;
+            let idx = class_node_index(&mut graph, id, true)?;
             sync_infos(&graph, &mut infos);
             push_member(&mut infos[idx], member);
             continue;
@@ -1292,14 +1292,18 @@ fn sync_infos(graph: &Graph, infos: &mut Vec<ClassInfo>) {
     }
 }
 
-fn class_node_index(graph: &mut Graph, name: &str) -> Option<usize> {
+fn class_node_index(
+    graph: &mut Graph,
+    name: &str,
+    generic_label_is_authoritative: bool,
+) -> Option<usize> {
     let generic_markers = name.chars().filter(|&c| c == '~').count();
     let base = if generic_markers >= 2 && generic_markers % 2 == 0 && name.ends_with('~') {
         name.split_once('~').map(|(base, _)| base).unwrap_or(name)
     } else {
         name
     };
-    let label = (base != name).then_some(name);
+    let label = (generic_label_is_authoritative && base != name).then_some(name);
     graph.node_index(base, label, Shape::Rect)
 }
 
@@ -1512,12 +1516,25 @@ fn parse_er(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
 
 fn is_er_entity_declaration(decl: &str) -> bool {
     if let Some(open) = decl.find('[') {
-        let id = decl[..open].trim();
-        let alias = &decl[open + 1..];
-        return !id.is_empty()
-            && !id.contains(char::is_whitespace)
-            && alias.ends_with(']')
-            && !clean_label(alias.trim_end_matches(']')).is_empty();
+        let id = &decl[..open];
+        if id.is_empty() || id.contains(char::is_whitespace) {
+            return false;
+        }
+
+        let mut in_quotes = false;
+        let mut close = None;
+        for (offset, c) in decl[open + 1..].char_indices() {
+            if c == '"' {
+                in_quotes = !in_quotes;
+            } else if c == ']' && !in_quotes {
+                close = Some(open + 1 + offset);
+                break;
+            }
+        }
+        let Some(close) = close else {
+            return false;
+        };
+        return close + 1 == decl.len() && !clean_label(&decl[open + 1..close]).is_empty();
     }
     !decl.is_empty() && decl.split_whitespace().count() == 1
 }
@@ -5144,7 +5161,7 @@ mod tests {
     #[test]
     fn class_generic_definition_uses_base_identifier() {
         let (graph, infos) = parse_class(
-            "classDiagram\n class Dog~T~ {\n +fetch(item: T) bool\n }\n Owner --> Dog : owns",
+            "classDiagram\n class Dog~T~ {\n +fetch(item: T) bool\n }\n Owner --> Dog~U~ : owns",
         )
         .unwrap();
         assert_eq!(graph.nodes.len(), 2);
@@ -5162,9 +5179,10 @@ mod tests {
         );
 
         let out = plain(
-            "classDiagram\n class Dog~T~ {\n +fetch(item: T) bool\n }\n Owner --> Dog : owns",
+            "classDiagram\n class Dog~T~ {\n +fetch(item: T) bool\n }\n Owner --> Dog~U~ : owns",
         );
         assert_eq!(out.matches("Dog<T>").count(), 1, "{out}");
+        assert!(!out.contains("Dog<U>"), "{out}");
         assert!(!out.lines().any(|line| line.contains("│ Dog │")), "{out}");
         assert!(out.contains("owns"), "{out}");
     }
@@ -5283,6 +5301,21 @@ mod tests {
         assert!(out.contains("Customer Account"), "{out}");
         assert!(out.contains("string email"), "{out}");
         assert!(out.contains("1 has 0..1"), "{out}");
+    }
+
+    #[test]
+    fn er_quoted_alias_may_contain_a_closing_bracket() {
+        let out = plain("erDiagram\n a[\"Account ] tier\"] {\n string value\n }");
+        assert!(!out.contains("mermaid: erDiagram"), "{out}");
+        assert!(out.contains("Account ] tier"), "{out}");
+    }
+
+    #[test]
+    fn er_malformed_alias_declarations_fall_back() {
+        for declaration in ["a [Account]", "a[foo] trailing]", "a[foo][bar]"] {
+            let out = plain(&format!("erDiagram\n {declaration} {{\n string value\n }}"));
+            assert!(out.contains("mermaid: erDiagram"), "{declaration}:\n{out}");
+        }
     }
 
     #[test]

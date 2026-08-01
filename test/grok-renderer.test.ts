@@ -122,11 +122,12 @@ test("uses a generic class's base name for later relationships", async () => {
 	const renderer = await loadGrokRenderer();
 	const plain = grokHtmlToPlainLines(
 		renderer.renderHtml(
-			"classDiagram\n  class Dog~T~ {\n    +fetch(item: T) bool\n  }\n  Owner --> Dog : owns",
+			"classDiagram\n  class Dog~T~ {\n    +fetch(item: T) bool\n  }\n  Owner --> Dog~U~ : owns",
 			120,
 		),
 	).join("\n");
 	assert.equal(plain.match(/Dog<T>/g)?.length, 1, plain);
+	assert.doesNotMatch(plain, /Dog<U>/);
 	assert.doesNotMatch(plain, /│ Dog │/);
 	assert.match(plain, /owns/);
 });
@@ -142,5 +143,15 @@ test("renders quoted ER aliases that declare attributes", async () => {
 	assert.doesNotMatch(plain, /mermaid: erDiagram/);
 	for (const label of ["Person", "Customer Account", "string email", "1 has 0..1"]) {
 		assert.match(plain, new RegExp(label));
+	}
+});
+
+test("falls back for malformed ER alias declarations", async () => {
+	const renderer = await loadGrokRenderer();
+	for (const declaration of ["a [Account]", "a[foo] trailing]", "a[foo][bar]"]) {
+		const plain = grokHtmlToPlainLines(
+			renderer.renderHtml(`erDiagram\n  ${declaration} {\n    string value\n  }`, 120),
+		).join("\n");
+		assert.match(plain, /mermaid: erDiagram/, declaration);
 	}
 });
