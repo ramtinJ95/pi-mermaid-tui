@@ -30,10 +30,12 @@ architecture with these local modifications:
   and vertical fan-out reserves enough width between sibling labels.
 - Generic class declarations use Mermaid's base-name identity, so later
   relationships such as `Owner --> Dog` reuse `class Dog~T~` instead of
-  creating a second `Dog` node or overriding its declared generic label.
+  creating a second `Dog` node or overriding its declared generic label;
+  generic-only references retain their label when they create a node.
 - Quoted ER entity aliases remain valid when their declaration also opens an
   attribute block, matching Mermaid's `a["Customer Account"] { ... }` form;
-  spaced or malformed alias wrappers fall back to source.
+  one canonical entity-token validator rejects spaced or malformed alias
+  wrappers in both declarations and relationships.
 - Source fallbacks, including their title and width warning, honor very narrow
   terminal widths and direct users to the displayed source rather than to an
   image that this package does not produce.

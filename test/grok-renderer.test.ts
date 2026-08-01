@@ -122,14 +122,39 @@ test("uses a generic class's base name for later relationships", async () => {
 	const renderer = await loadGrokRenderer();
 	const plain = grokHtmlToPlainLines(
 		renderer.renderHtml(
-			"classDiagram\n  class Dog~T~ {\n    +fetch(item: T) bool\n  }\n  Owner --> Dog~U~ : owns",
+			"classDiagram\n  class Dog~T~ {\n    +fetch(item: T) bool\n  }\n  Dog~U~ : +String name\n  Owner --> Dog~U~ : owns",
 			120,
 		),
 	).join("\n");
 	assert.equal(plain.match(/Dog<T>/g)?.length, 1, plain);
 	assert.doesNotMatch(plain, /Dog<U>/);
 	assert.doesNotMatch(plain, /│ Dog │/);
+	assert.match(plain, /\+String name/);
 	assert.match(plain, /owns/);
+});
+
+test("keeps generic labels when references create class nodes", async () => {
+	const renderer = await loadGrokRenderer();
+	const relation = grokHtmlToPlainLines(renderer.renderHtml("classDiagram\n  Dog~T~ --> Owner", 120)).join("\n");
+	assert.match(relation, /Dog<T>/);
+
+	const annotation = grokHtmlToPlainLines(
+		renderer.renderHtml("classDiagram\n  <<interface>> Shape~T~", 120),
+	).join("\n");
+	assert.match(annotation, /Shape<T>/);
+	assert.match(annotation, /«interface»/);
+});
+
+test("falls back for malformed generic class identities", async () => {
+	const renderer = await loadGrokRenderer();
+	for (const source of [
+		"classDiagram\n  class ~T~",
+		"classDiagram\n  class Dog~~",
+		"classDiagram\n  class Dog~T~x~U~",
+	]) {
+		const plain = grokHtmlToPlainLines(renderer.renderHtml(source, 120)).join("\n");
+		assert.match(plain, /mermaid: classDiagram/, source);
+	}
 });
 
 test("renders quoted ER aliases that declare attributes", async () => {
@@ -146,12 +171,18 @@ test("renders quoted ER aliases that declare attributes", async () => {
 	}
 });
 
-test("falls back for malformed ER alias declarations", async () => {
+test("falls back for malformed ER entity tokens", async () => {
 	const renderer = await loadGrokRenderer();
-	for (const declaration of ["a [Account]", "a[foo] trailing]", "a[foo][bar]"]) {
-		const plain = grokHtmlToPlainLines(
-			renderer.renderHtml(`erDiagram\n  ${declaration} {\n    string value\n  }`, 120),
-		).join("\n");
-		assert.match(plain, /mermaid: erDiagram/, declaration);
+	for (const source of [
+		"erDiagram\n  a [Account] {\n    string value\n  }",
+		"erDiagram\n  a[foo] trailing] {\n    string value\n  }",
+		"erDiagram\n  a[foo][bar] {\n    string value\n  }",
+		'erDiagram\n  a["foo" bar] {\n    string value\n  }',
+		'erDiagram\n  a[foo "bar"] {\n    string value\n  }',
+		"erDiagram\n  a[foo][bar] ||--|| b : x",
+		"erDiagram\n  a] ||--|| b : x",
+	]) {
+		const plain = grokHtmlToPlainLines(renderer.renderHtml(source, 120)).join("\n");
+		assert.match(plain, /mermaid: erDiagram/, source);
 	}
 });
