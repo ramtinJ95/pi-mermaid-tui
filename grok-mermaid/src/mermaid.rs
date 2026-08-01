@@ -1494,7 +1494,7 @@ fn parse_er(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
             Some(d) => (d.trim(), true),
             None => (st.as_str(), false),
         };
-        if decl.is_empty() || decl.split_whitespace().count() != 1 {
+        if !is_er_entity_declaration(decl) {
             return None;
         }
         let idx = er_entity(&mut graph, &mut infos, decl)?;
@@ -1508,6 +1508,18 @@ fn parse_er(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
     }
     sync_infos(&graph, &mut infos);
     Some((graph, infos))
+}
+
+fn is_er_entity_declaration(decl: &str) -> bool {
+    if let Some(open) = decl.find('[') {
+        let id = decl[..open].trim();
+        let alias = &decl[open + 1..];
+        return !id.is_empty()
+            && !id.contains(char::is_whitespace)
+            && alias.ends_with(']')
+            && !clean_label(alias.trim_end_matches(']')).is_empty();
+    }
+    !decl.is_empty() && decl.split_whitespace().count() == 1
 }
 
 fn er_entity(graph: &mut Graph, infos: &mut Vec<ClassInfo>, token: &str) -> Option<usize> {
@@ -5259,6 +5271,18 @@ mod tests {
         let out = plain("erDiagram\n p[Person] ||--o{ a[\"Bank Account\"] : owns");
         assert!(out.contains("Person"), "{out}");
         assert!(out.contains("Bank Account"), "{out}");
+    }
+
+    #[test]
+    fn er_quoted_alias_with_attributes() {
+        let out = plain(
+            "erDiagram\n p[Person] {\n string name\n }\n a[\"Customer Account\"] {\n string email\n }\n p ||--o| a : has",
+        );
+        assert!(!out.contains("mermaid: erDiagram"), "{out}");
+        assert!(out.contains("Person"), "{out}");
+        assert!(out.contains("Customer Account"), "{out}");
+        assert!(out.contains("string email"), "{out}");
+        assert!(out.contains("1 has 0..1"), "{out}");
     }
 
     #[test]
