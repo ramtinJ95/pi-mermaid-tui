@@ -1,6 +1,6 @@
 {
   "name": "@ramtinj95/pi-mermaid-tui",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Render Mermaid diagrams as terminal-native Unicode directly in the Pi TUI",
   "type": "module",
   "license": "Apache-2.0",
