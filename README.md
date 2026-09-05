@@ -21,6 +21,12 @@ Reload or restart Pi after installation. The model can then call `render_mermaid
 
 This is a terminal-oriented subset of Mermaid rather than a complete Mermaid.js implementation. Unsupported diagram families and syntax use the upstream renderer's framed-source fallback. Diagrams that cannot fit the available width may also fall back to source.
 
+The TUI completion message confirms that output is available, not that graphical
+layout succeeded. The tool result shows either Unicode diagram art or framed
+Mermaid source at the current width; resizing can switch between them. Sequence
+diagrams with many participants or long messages can require more columns than a
+normal terminal provides.
+
 ## Orientation
 
 Orientation stays part of the Mermaid source, so each diagram can choose the

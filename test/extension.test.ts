@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import mermaidExtension from "../src/index.ts";
@@ -11,7 +12,7 @@ interface RegisteredMermaidTool {
 		params: { source: string },
 		signal: AbortSignal | undefined,
 		onUpdate: undefined,
-		context: { mode: "print" },
+		context: { mode: "print" | "tui" },
 	): Promise<{
 		content: Array<{ type: "text"; text: string }>;
 		details: { source: string };
@@ -66,6 +67,17 @@ test("registers a composable tool and renders plain output outside the TUI", asy
 	assert.match(result.content[0]?.text ?? "", /Start/);
 	assert.match(result.content[0]?.text ?? "", /End/);
 	assert.equal(result.terminate, undefined);
+
+	const source = await readFile(new URL("./fixtures/sequence-issue-7.mmd", import.meta.url), "utf8");
+	const tuiResult = await registered.execute("call-2", { source }, undefined, undefined, { mode: "tui" });
+	assert.equal(tuiResult.details.source, source.trim());
+	assert.match(tuiResult.content[0]?.text ?? "", /source fallback/);
+	assert.doesNotMatch(tuiResult.content[0]?.text ?? "", /Rendered Mermaid diagram/);
+	assert.equal(tuiResult.terminate, undefined);
+
+	const fallback = await registered.execute("call-3", { source }, undefined, undefined, { mode: "print" });
+	assert.match(fallback.content[0]?.text ?? "", /mermaid: sequenceDiagram/);
+	assert.match(fallback.content[0]?.text ?? "", /DROP\/CREATE public; apply SQL/);
 
 	assert.ok(sessionStart);
 	sessionStart();

@@ -1,0 +1,31 @@
+╭ mermaid: sequenceDiagram ─────────────────────────────────────────────────╮
+│ sequenceDiagram                                                           │
+│     participant Entry as CLI / Scheduler                                  │
+│     participant Orchestrator as extract_and_load_data                     │
+│     participant First as First source DB                                  │
+│     participant Tools as pg_dump / psql                                   │
+│     participant Sources as Each source DB                                 │
+│     participant DW as Data warehouse                                      │
+│     participant Mail as Sweego                                            │
+│                                                                           │
+│     Entry->>Orchestrator: staging by default, production with --prod      │
+│     Orchestrator->>First: choose schema source                            │
+│     Orchestrator->>Tools: pg_dump --schema-only                           │
+│     Tools-->>Orchestrator: temporary SQL file                             │
+│     Orchestrator->>Orchestrator: strip UNIQUE and NOT NULL                │
+│     Orchestrator->>Tools: DROP/CREATE public; apply SQL                   │
+│     Tools->>DW: replace schema                                            │
+│     loop each selected source                                             │
+│         Orchestrator->>Sources: discover public tables and columns        │
+│         Orchestrator->>DW: disable triggers for this connection           │
+│         loop each included table                                          │
+│             Sources-->>Orchestrator: rows on common, non-excluded columns │
+│             Orchestrator->>DW: append rows                                │
+│         end                                                               │
+│         Orchestrator->>DW: enable triggers and commit source transaction  │
+│     end                                                                   │
+│     alt any exception                                                     │
+│         Orchestrator->>Mail: send failure message                         │
+│         Orchestrator-->>Entry: re-raise exception                         │
+│     end                                                                   │
+╰───────────────────────────────────────────────────────────────────────────╯
