@@ -1,0 +1,53 @@
+╭ mermaid: sequenceDiagram ────────────╮
+│ sequenceDiagram                      │
+│     participant Entry as CLI / Sched │
+│ uler                                 │
+│     participant Orchestrator as extr │
+│ act_and_load_data                    │
+│     participant First as First sourc │
+│ e DB                                 │
+│     participant Tools as pg_dump / p │
+│ sql                                  │
+│     participant Sources as Each sour │
+│ ce DB                                │
+│     participant DW as Data warehouse │
+│     participant Mail as Sweego       │
+│                                      │
+│     Entry->>Orchestrator: staging by │
+│  default, production with --prod     │
+│     Orchestrator->>First: choose sch │
+│ ema source                           │
+│     Orchestrator->>Tools: pg_dump -- │
+│ schema-only                          │
+│     Tools-->>Orchestrator: temporary │
+│  SQL file                            │
+│     Orchestrator->>Orchestrator: str │
+│ ip UNIQUE and NOT NULL               │
+│     Orchestrator->>Tools: DROP/CREAT │
+│ E public and apply SQL               │
+│     Tools->>DW: replace schema       │
+│     loop each selected source        │
+│         Orchestrator->>Sources: disc │
+│ over public tables and columns       │
+│         Orchestrator->>DW: disable t │
+│ riggers for this connection          │
+│         loop each included table     │
+│             Sources-->>Orchestrator: │
+│  rows on common, non-excluded column │
+│ s                                    │
+│             Orchestrator->>DW: appen │
+│ d rows                               │
+│         end                          │
+│         Orchestrator->>DW: enable tr │
+│ iggers and commit source transaction │
+│     end                              │
+│     alt any exception                │
+│         Orchestrator->>Mail: send fa │
+│ ilure message                        │
+│         Orchestrator-->>Entry: re-ra │
+│ ise exception                        │
+│     end                              │
+╰──────────────────────────────────────╯
+This diagram is too wide for the
+available terminal width; Mermaid source
+is shown above.

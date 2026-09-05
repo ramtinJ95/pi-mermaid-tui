@@ -73,7 +73,7 @@ export class MermaidComponent implements Component {
 	}
 
 	private renderSource(width: number): string[] {
-		const lines = [this.theme.fg("dim", "Mermaid source")];
+		const lines = [truncateToWidth(this.theme.fg("dim", "Mermaid source"), width)];
 		for (const sourceLine of this.source.split("\n")) {
 			const styled = this.theme.fg("mdCodeBlock", sourceLine || " ");
 			lines.push(...wrapTextWithAnsi(styled, width));

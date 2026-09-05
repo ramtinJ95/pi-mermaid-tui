@@ -52,7 +52,7 @@ export default function mermaidExtension(pi: ExtensionAPI) {
 
 			const content =
 				ctx.mode === "tui"
-					? "Rendered Mermaid diagram in the TUI."
+					? "Mermaid output is shown in the TUI, with source fallback for unsupported syntax or insufficient width."
 					: grokHtmlToPlainLines(renderer.renderHtml(source, 100)).join("\n");
 			return {
 				content: [{ type: "text" as const, text: content }],

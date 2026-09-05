@@ -11,6 +11,8 @@ interface GoldenCase {
 	source: string;
 }
 
+const reportedSequence = await readFile(new URL("./fixtures/sequence-issue-7.mmd", import.meta.url), "utf8");
+
 const cases: GoldenCase[] = [
 	{
 		name: "flowchart-tb-40",
@@ -62,6 +64,16 @@ const cases: GoldenCase[] = [
 		width: 80,
 		source:
 			"sequenceDiagram\n  participant Client\n  participant API\n  Client->>API: Request\n  API-->>Client: Response",
+	},
+	{
+		name: "sequence-issue-7-fallback-80",
+		width: 80,
+		source: reportedSequence,
+	},
+	{
+		name: "sequence-nested-width-fallback-40",
+		width: 40,
+		source: reportedSequence.replace("public; apply SQL", "public and apply SQL"),
 	},
 	{
 		name: "state-80",
