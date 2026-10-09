@@ -39,6 +39,9 @@ export default function mermaidExtension(pi: ExtensionAPI) {
 			}),
 		}),
 		renderShell: "self",
+		// The diagram is only visible as this tool's own transcript row. Nested calls from codemode
+		// scripts get no row, so keep the tool out of scripts and declared directly to the model.
+		exposure: "model-only",
 
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 			const source = params.source.trim();

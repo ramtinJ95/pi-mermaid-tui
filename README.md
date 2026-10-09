@@ -104,7 +104,7 @@ relationships to the boundary frame rather than the named node.
 
 The extension registers `render_mermaid` through Pi's public extension API. A tool call validates the Mermaid source and lazily loads the bundled WebAssembly renderer. Its semantic output classes are mapped to the active Pi theme by a custom result component, which rerenders at the current terminal width.
 
-Tool calls behave normally: rendering a diagram does not terminate the model turn. The model can continue after a diagram, so skills and longer workflows can use diagrams as one part of their output. Expanding a completed tool result shows the original Mermaid source.
+Tool calls behave normally: rendering a diagram does not terminate the model turn. The model can continue after a diagram, so skills and longer workflows can use diagrams as one part of their output. Expanding a completed tool result shows the original Mermaid source. The tool uses Pi's `model-only` exposure: Pi's codemode scripts cannot call it, because nested calls get no transcript row in which to show the diagram.
 
 This package intentionally does not patch Pi's internal Markdown renderer, so the integration stays on Pi's public extension surface. Pi 0.84 and later render ordinary fenced Mermaid blocks in interactive messages on their own, controlled by Pi's `markdown.mermaid` setting; `render_mermaid` works independently of that setting.
 

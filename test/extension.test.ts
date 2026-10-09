@@ -8,6 +8,7 @@ import mermaidExtension from "../src/index.ts";
 
 interface RegisteredMermaidTool {
 	name: string;
+	exposure?: string;
 	promptGuidelines?: string[];
 	execute(
 		toolCallId: string,
@@ -44,6 +45,7 @@ test("registers a composable tool and renders plain output outside the TUI", asy
 	mermaidExtension(api);
 	assert.ok(registered);
 	assert.equal(registered.name, "render_mermaid");
+	assert.equal(registered.exposure, "model-only");
 	assert.match(registered.promptGuidelines?.join("\n") ?? "", /raw Mermaid code fence/);
 	assert.match(registered.promptGuidelines?.join("\n") ?? "", /flowchart TB/);
 	assert.match(registered.promptGuidelines?.join("\n") ?? "", /flowchart LR/);
