@@ -11,6 +11,12 @@ interface MermaidDetails {
 	source: string;
 }
 
+// renderShell "self" renderers apply Pi's outputPad setting themselves. Hosts before Pi 1.1 do not
+// pass it; keep the unpadded layout they always had instead of Text's default padding of 1.
+function outputPad(context: { outputPad?: number }): number {
+	return context.outputPad ?? 0;
+}
+
 export default function mermaidExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "render_mermaid",
@@ -33,6 +39,9 @@ export default function mermaidExtension(pi: ExtensionAPI) {
 			}),
 		}),
 		renderShell: "self",
+		// The diagram is only visible as this tool's own transcript row. Nested calls from codemode
+		// scripts get no row, so keep the tool out of scripts and declared directly to the model.
+		exposure: "model-only",
 
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 			const source = params.source.trim();
@@ -60,21 +69,23 @@ export default function mermaidExtension(pi: ExtensionAPI) {
 			};
 		},
 
-		renderCall(_args, theme) {
-			return new Text(theme.fg("toolTitle", theme.bold("Mermaid diagram")), 0, 0);
+		renderCall(_args, theme, context) {
+			return new Text(theme.fg("toolTitle", theme.bold("Mermaid diagram")), outputPad(context), 0);
 		},
 
 		renderResult(result, { expanded, isPartial }, theme, context) {
-			if (isPartial) return new Text(theme.fg("dim", "Preparing diagram..."), 0, 0);
+			const paddingX = outputPad(context);
+			if (isPartial) return new Text(theme.fg("dim", "Preparing diagram..."), paddingX, 0);
 			const details = result.details as MermaidDetails | undefined;
 			if (!details?.source) {
 				const content = result.content.find((item) => item.type === "text");
-				return new Text(content?.type === "text" ? content.text : "Mermaid diagram unavailable", 0, 0);
+				return new Text(content?.type === "text" ? content.text : "Mermaid diagram unavailable", paddingX, 0);
 			}
 			return new MermaidComponent({
 				source: details.source,
 				showSource: expanded,
 				theme,
+				paddingX,
 				onReady: context.invalidate,
 			});
 		},

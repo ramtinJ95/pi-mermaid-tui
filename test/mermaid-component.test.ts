@@ -22,6 +22,7 @@ test("maps code-change classes to Pi theme colors", async () => {
 			"flowchart TD\n  A[Same]:::same --> B[Added]:::added\n  B --> C[Removed]:::removed\n  D[Changed]\n  class D changed",
 		showSource: false,
 		theme,
+		paddingX: 0,
 		onReady() {},
 	});
 	const output = component.render(120).join("\n");

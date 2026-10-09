@@ -18,6 +18,7 @@ interface MermaidComponentOptions {
 	source: string;
 	showSource: boolean;
 	theme: Theme;
+	paddingX: number;
 	onReady: () => void;
 }
 
@@ -41,15 +42,17 @@ export class MermaidComponent implements Component {
 	private readonly source: string;
 	private readonly showSource: boolean;
 	private readonly theme: Theme;
+	private readonly paddingX: number;
 	private renderer: GrokRenderer | undefined;
 	private loadError: string | undefined;
 	private cachedWidth: number | undefined;
 	private cachedLines: string[] | undefined;
 
-	constructor({ source, showSource, theme, onReady }: MermaidComponentOptions) {
+	constructor({ source, showSource, theme, paddingX, onReady }: MermaidComponentOptions) {
 		this.source = source;
 		this.showSource = showSource;
 		this.theme = theme;
+		this.paddingX = paddingX;
 		this.renderer = getLoadedGrokRenderer();
 		if (!this.renderer) {
 			void loadGrokRenderer().then(
@@ -90,6 +93,17 @@ export class MermaidComponent implements Component {
 		if (width <= 0) return [];
 		if (this.cachedLines && this.cachedWidth === width) return this.cachedLines;
 
+		// Shrink the padding like pi-tui's Text so padded lines never exceed the width.
+		const paddingX = Math.min(this.paddingX, Math.max(0, Math.floor((width - 1) / 2)));
+		const margin = " ".repeat(paddingX);
+		const lines = this.renderContent(width - paddingX * 2).map((line) => margin + line);
+
+		this.cachedWidth = width;
+		this.cachedLines = lines;
+		return lines;
+	}
+
+	private renderContent(width: number): string[] {
 		let lines: string[];
 		if (this.loadError) {
 			lines = this.renderFailure(width, this.loadError);
@@ -114,9 +128,6 @@ export class MermaidComponent implements Component {
 				lines = this.renderFailure(width, error instanceof Error ? error.message : String(error));
 			}
 		}
-
-		this.cachedWidth = width;
-		this.cachedLines = lines;
 		return lines;
 	}
 }
