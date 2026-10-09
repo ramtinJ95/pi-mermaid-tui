@@ -106,7 +106,7 @@ The extension registers `render_mermaid` through Pi's public extension API. A to
 
 Tool calls behave normally: rendering a diagram does not terminate the model turn. The model can continue after a diagram, so skills and longer workflows can use diagrams as one part of their output. Expanding a completed tool result shows the original Mermaid source.
 
-This package intentionally does not patch Pi's internal Markdown renderer. Ordinary fenced Mermaid blocks remain source code unless the model calls `render_mermaid`; in return, the integration stays on Pi's public extension surface.
+This package intentionally does not patch Pi's internal Markdown renderer, so the integration stays on Pi's public extension surface. Pi 0.84 and later render ordinary fenced Mermaid blocks in interactive messages on their own, controlled by Pi's `markdown.mermaid` setting; `render_mermaid` works independently of that setting.
 
 In non-TUI modes, the tool returns plain Unicode text instead of a custom component.
 
