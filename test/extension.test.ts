@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { visibleWidth } from "@earendil-works/pi-tui";
+import { loadGrokRenderer } from "../src/grok-renderer.ts";
 import mermaidExtension from "../src/index.ts";
 
 interface RegisteredMermaidTool {
@@ -82,4 +84,56 @@ test("registers a composable tool and renders plain output outside the TUI", asy
 	assert.ok(sessionStart);
 	sessionStart();
 	assert.deepEqual(activeTools, ["read", "render_mermaid"]);
+});
+
+test("self-rendered call and result honor the outputPad setting", async () => {
+	await loadGrokRenderer();
+	let registered: ToolDefinition | undefined;
+	mermaidExtension({
+		registerTool(tool: ToolDefinition) {
+			registered = tool;
+		},
+		on() {},
+	} as unknown as ExtensionAPI);
+	assert.ok(registered?.renderCall && registered.renderResult);
+
+	const theme = {
+		fg: (_color: string, text: string) => text,
+		bold: (text: string) => text,
+		italic: (text: string) => text,
+	} as Theme;
+	const result = { content: [], details: { source: "flowchart LR\n  Start --> End" } };
+	type RenderContext = Parameters<NonNullable<ToolDefinition["renderCall"]>>[2];
+	// Hosts before Pi 1.1 omit outputPad.
+	const render = (outputPad: number | undefined, width: number) => {
+		const context = { outputPad, invalidate() {} } as RenderContext;
+		return {
+			call: registered!.renderCall!({}, theme, context).render(width),
+			result: registered!.renderResult!(result, { expanded: false, isPartial: false }, theme, context).render(width),
+		};
+	};
+	const diagramRow = (lines: string[]) => lines.find((line) => line.includes("│ Start ├"));
+
+	const flush = render(0, 40);
+	const padded = render(1, 40);
+	assert.equal(flush.call[0]?.trimEnd(), "Mermaid diagram");
+	assert.equal(padded.call[0]?.trimEnd(), " Mermaid diagram");
+	assert.match(diagramRow(flush.result) ?? "", /^│ Start/);
+	assert.match(diagramRow(padded.result) ?? "", /^ │ Start/);
+	assert.deepEqual(render(undefined, 40), flush);
+
+	// The padded diagram needs two more columns before it fits instead of falling back to source.
+	const naturalWidth = Math.max(...flush.result.map(visibleWidth));
+	assert.ok(diagramRow(render(0, naturalWidth).result));
+	assert.equal(diagramRow(render(1, naturalWidth).result), undefined);
+	assert.match(diagramRow(render(1, naturalWidth + 2).result) ?? "", /^ │ Start/);
+
+	assert.deepEqual(render(1, 0).result, []);
+	for (const width of [1, 2, 3]) {
+		const { call, result: lines } = render(1, width);
+		assert.ok(lines.length > 0);
+		for (const line of [...call, ...lines]) {
+			assert.ok(visibleWidth(line) <= width, `${visibleWidth(line)} > ${width}: ${JSON.stringify(line)}`);
+		}
+	}
 });

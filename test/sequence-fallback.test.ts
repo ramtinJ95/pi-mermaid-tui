@@ -65,7 +65,7 @@ test("the themed TUI component switches between sequence art and fallback on res
 	const renderer = await loadGrokRenderer();
 	for (const source of [reportedSource, layoutSource]) {
 		for (const showSource of [false, true]) {
-			const component = new MermaidComponent({ source, showSource, theme, onReady() {} });
+			const component = new MermaidComponent({ source, showSource, theme, paddingX: 0, onReady() {} });
 			for (const width of [200, 120, 80, 40, 24, 12, 4, 1, 80, 200]) {
 				const lines = component.render(width);
 				assertFits(lines, width);
